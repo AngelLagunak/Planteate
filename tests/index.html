@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planteate · tests</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; margin: 16px; background: #F1EEE2; color: #232C1E; }
+    .ok { color: #3F5A34; } .ko { color: #B5532A; font-weight: 600; }
+    #resumen { font-size: 1.2rem; font-weight: 700; margin-bottom: 12px; }
+    @media (prefers-color-scheme: dark) { body { background: #171C14; color: #ECEDE4; } .ok { color: #8DB477; } }
+  </style>
+</head>
+<body>
+  <div id="resumen">Ejecutando…</div>
+  <ul id="lista"></ul>
+  <script type="module">
+    // Tests de las reglas de cuidado. Abrir en el navegador: /tests/
+    import * as C from '../js/cuidados.js';
+
+    const resultados = [];
+    const test = (nombre, fn) => { try { fn(); resultados.push([true, nombre]); } catch (e) { resultados.push([false, nombre + ' → ' + e.message]); } };
+    const igual = (a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`esperaba ${JSON.stringify(b)}, salió ${JSON.stringify(a)}`); };
+    const dia = (s) => new Date(s + 'T10:00:00');
+    const hace = (n, desde) => new Date(desde.getTime() - n * 86400000).toISOString();
+
+    const especie = { riego: { cv: { min: 4, max: 6, unidad: 'dia' }, oi: { min: 8, max: 10, unidad: 'dia' } }, nutrir: { min: 1, max: 1, unidad: 'mes' }, trasplante: { min: 1, max: 2, unidad: 'año' } };
+    const JULIO = dia('2026-07-15'), ENERO = dia('2026-01-15');
+
+    // --- Frecuencias
+    test('rango → media en días', () => igual(C.rangoADias({ min: 2, max: 4, unidad: 'semana' }), 21));
+    test('solo mínimo', () => igual(C.rangoADias({ min: 3, unidad: 'dia' }), 3));
+    test('unidad desconocida → null', () => igual(C.rangoADias({ min: 3, unidad: 'quincena' }), null));
+    test('texto legado "Cada 2–4 sem"', () => igual(C.parseTexto('Cada 2–4 sem'), 21));
+    test('texto legado "1 vez al mes"', () => igual(C.parseTexto('1 vez al mes'), 30));
+    test('texto legado "1–2 veces al año"', () => igual(Math.round(C.parseTexto('1–2 veces al año')), 243));
+    test('textoRango plural/singular', () => { igual(C.textoRango({ min: 1, max: 1, unidad: 'mes' }), 'cada 1 mes'); igual(C.textoRango({ min: 2, max: 3, unidad: 'semana' }), 'cada 2–3 semanas'); });
+
+    test('prioridad: planta > especie', () => {
+      const p = { 'Riego - intervalo mín (prim/verano)': 2, 'Riego - intervalo máx (prim/verano)': 2, 'Riego - unidad (prim/verano)': 'dia' };
+      igual(C.frecuencia(p, especie, 'riego', JULIO).fuente, 'planta');
+      igual(C.frecuencia(p, especie, 'riego', JULIO).dias, 2);
+    });
+    test('sin datos propios → especie según estación', () => {
+      igual(C.frecuencia({}, especie, 'riego', JULIO).dias, 5);
+      igual(C.frecuencia({}, especie, 'riego', ENERO).dias, 9);
+    });
+    test('sin nada → valor por defecto', () => igual(C.frecuencia({}, null, 'riego', JULIO), { dias: 7, rango: null, fuente: 'defecto' }));
+    test('nutrir usa Abono y si no Fertilizante', () => {
+      igual(C.frecuencia({ 'Fertilizante - intervalo mín': 2, 'Fertilizante - unidad': 'semana' }, null, 'nutrir', JULIO).dias, 14);
+    });
+
+    // --- Estaciones
+    test('marzo–agosto es temporada cálida', () => { igual(C.esTemporadaCalida(dia('2026-03-01')), true); igual(C.esTemporadaCalida(dia('2026-09-01')), false); });
+    test('días de calendario, no horas', () => igual(C.diasEntre(new Date('2026-09-24T23:50:00'), new Date('2026-09-25T00:10:00')), 1));
+
+    // --- Niveles
+    test('nivel verde / amarillo / rojo', () => { igual(C.nivel(1, 9), 'verde'); igual(C.nivel(6, 9), 'amarillo'); igual(C.nivel(10, 9), 'rojo'); });
+
+    // --- Estado completo
+    const acc = (tipo, dias, desde, persona = 'Ana') => ({ logId: Math.random(), plantaId: 'p', tipoAccion: tipo, timestamp: hace(dias, desde), persona });
+    test('riego atrasado en verano', () => {
+      const e = C.estadoPlanta({}, especie, { riego: [acc('riego', 8, JULIO)], nutrir: [], trasplante: [] }, null, JULIO);
+      igual([e.riego.nivel, e.riego.diasRestantes, e.color], ['rojo', -3, 'rojo']);
+    });
+    test('el último registro manda (no el primero)', () => {
+      const e = C.estadoPlanta({}, especie, { riego: [acc('riego', 20, JULIO), acc('riego', 1, JULIO)], nutrir: [], trasplante: [] }, null, JULIO);
+      igual(e.riego.nivel, 'verde');
+    });
+    test('sin referencia → rojo explícito', () => {
+      const e = C.estadoPlanta({}, especie, null, null, JULIO);
+      igual([e.riego.nivel, e.riego.sinReferencia, C.textoEstado(e.riego)], ['rojo', true, '⚠️ Sin fecha de referencia']);
+    });
+    test('inicio global sirve de referencia', () => {
+      const e = C.estadoPlanta({}, especie, null, hace(1, JULIO), JULIO);
+      igual(e.riego.sinReferencia, false);
+    });
+    test('riego pospuesto → verde', () => {
+      const p = { RiegoPospuestoHasta: new Date(JULIO.getTime() + 2 * 86400000).toISOString() };
+      const e = C.estadoPlanta(p, especie, { riego: [acc('riego', 30, JULIO)], nutrir: [], trasplante: [] }, null, JULIO);
+      igual([e.riego.nivel, !!e.riego.pospuestoHasta], ['verde', true]);
+    });
+    test('nutrir en reposo en invierno', () => {
+      const e = C.estadoPlanta({}, especie, { riego: [], nutrir: [acc('abono', 200, ENERO)], trasplante: [] }, null, ENERO);
+      igual([e.nutrir.nivel, e.nutrir.reposo], ['verde', true]);
+    });
+    test('abono antiguo cuenta como nutrir', () => {
+      igual(C.tipoV5('abono'), 'nutrir'); igual(C.tipoV5('fertilizante'), 'nutrir'); igual(C.tipoV5('observacion'), null);
+    });
+    test('"Inicio Frecuencia" no sale en el historial', () => {
+      const h = C.historialPorTipo([acc('riego', 3, JULIO), { ...acc('riego', 9, JULIO), persona: 'Inicio Frecuencia' }], 'p');
+      igual(h.riego.length, 1);
+    });
+    test('intervalos entre registros', () => {
+      const h = C.historialPorTipo([acc('riego', 10, JULIO), acc('riego', 6, JULIO), acc('riego', 1, JULIO)], 'p');
+      igual(C.intervalos(h.riego).map((x) => x.dias), [4, 5]);
+    });
+
+    const fallos = resultados.filter((r) => !r[0]).length;
+    document.getElementById('resumen').textContent = fallos ? `❌ ${fallos} de ${resultados.length} fallan` : `✅ ${resultados.length} tests correctos`;
+    document.getElementById('resumen').className = fallos ? 'ko' : 'ok';
+    document.getElementById('lista').innerHTML = resultados.map(([ok, n]) => `<li class="${ok ? 'ok' : 'ko'}">${ok ? '✓' : '✗'} ${n}</li>`).join('');
+    window.resultadoTests = { total: resultados.length, fallos };
+  </script>
+</body>
+</html>

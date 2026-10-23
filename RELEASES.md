@@ -6,6 +6,33 @@ manual); este archivo es solo el histórico.
 
 ---
 
+## V5.1 — avisos, deshacer y aprender más
+
+**Uso diario**
+- Botón **Deshacer** tras regar, nutrir o trasplantar (también en lote).
+- Portada **agrupada por sitio** (columna `Ubicación`), con "Elegir
+  todas" de un sitio en modo Varias.
+- **Avisos al móvil** cada día a las 9:00: ntfy, Telegram o WhatsApp
+  (CallMeBot). Prueba desde Ajustes.
+- **Fotos sin red**: se guardan en el móvil y se suben solas.
+
+**Aprender**
+- Banda "📖 Conoce a tu…" en la ficha, que lleva a Conócela.
+- **✨ Crear ficha con IA** para especies que no están en el catálogo
+  (hoja `Especies`).
+- **💬 Pregúntale**: preguntas libres con el contexto de la planta.
+- **↔️ Comparar fotos**: antes y después.
+
+**Técnico**
+- Backend en **un solo archivo** (`apps-script/Planteate.gs`): sustituye a
+  toda la V4 y al `Api.gs`. Sin Plant.id ni Perenual.
+- **Fotos privadas** en Drive (`hacerFotosPrivadas`); la app las guarda en
+  IndexedDB.
+- Tests de reglas de cuidado en `tests/index.html` (23).
+- El service worker coge siempre los archivos nuevos y recarga solo.
+
+---
+
 ## V5.0 — PWA
 
 **Plataforma**

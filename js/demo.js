@@ -2,9 +2,9 @@
 const hace = (dias) => new Date(Date.now() - dias * 86400000).toISOString();
 
 const plantas = [
-  { id: 'demo_zz', 'Nombre Casa': 'Zeta', 'Nombre científico': 'Zamioculcas zamiifolia', Archivada: 'FALSE', 'Cumpleaños': hace(400), Origen: 'Comprada' },
-  { id: 'demo_espa', 'Nombre Casa': 'Lirio del salón', 'Nombre científico': 'Spathiphyllum wallisii', Archivada: 'FALSE', 'Cumpleaños': hace(200), Origen: 'Regalo' },
-  { id: 'demo_alba', 'Nombre Casa': 'Albahaca cocina', 'Nombre científico': 'Ocimum basilicum', Archivada: 'FALSE', 'Cumpleaños': hace(60), Origen: 'Comprada' },
+  { id: 'demo_zz', 'Nombre Casa': 'Zeta', 'Ubicación': 'Salón', 'Nombre científico': 'Zamioculcas zamiifolia', Archivada: 'FALSE', 'Cumpleaños': hace(400), Origen: 'Comprada' },
+  { id: 'demo_espa', 'Nombre Casa': 'Lirio del salón', 'Ubicación': 'Salón', 'Nombre científico': 'Spathiphyllum wallisii', Archivada: 'FALSE', 'Cumpleaños': hace(200), Origen: 'Regalo' },
+  { id: 'demo_alba', 'Nombre Casa': 'Albahaca cocina', 'Ubicación': 'Cocina', 'Nombre científico': 'Ocimum basilicum', Archivada: 'FALSE', 'Cumpleaños': hace(60), Origen: 'Comprada' },
   { id: 'demo_cinta', 'Nombre Casa': 'Cinta colgante', 'Nombre científico': 'Chlorophytum comosum', Archivada: 'FALSE', Origen: 'Esqueje o propagación' },
   { id: 'demo_menta', 'Nombre Casa': 'Menta', 'Nombre científico': 'Mentha spicata', Archivada: 'TRUE', MotivoArchivado: 'muerta', FechaArchivado: hace(30) }
 ];

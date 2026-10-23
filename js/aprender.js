@@ -6,11 +6,19 @@ import { ETIQUETA, textoFrecuencia, estacion, esTemporadaCalida, intervalos, fre
 // ---------------------------------------------------------------
 // Catálogo de especies
 // ---------------------------------------------------------------
+let base = [];
 let especies = [];
 export async function cargarEspecies() {
   const r = await fetch('data/especies.json');
-  especies = (await r.json()).especies;
+  base = (await r.json()).especies;
+  especies = base.slice();
   return especies;
+}
+
+/** Fichas creadas con IA (hoja "Especies"). El catálogo fijo manda si hay choque de id. */
+export function registrarExtras(extras = []) {
+  const ids = new Set(base.map((e) => e.id));
+  especies = base.concat(extras.filter((e) => e?.id && !ids.has(e.id)));
 }
 export const listaEspecies = () => especies;
 export const especiePorId = (id) => especies.find((e) => e.id === id) || null;

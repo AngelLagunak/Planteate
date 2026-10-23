@@ -1,14 +1,15 @@
 // PLANTEATE 5.0 — service worker: la app abre sin red.
 // Sube VERSION en cada cambio para que los móviles cojan los archivos nuevos.
-const VERSION = 'pl5-v1';
+const VERSION = 'pl5-v2';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
-  'js/app.js', 'js/store.js', 'js/cuidados.js', 'js/aprender.js', 'js/demo.js',
+  'js/app.js', 'js/store.js', 'js/cuidados.js', 'js/aprender.js', 'js/demo.js', 'js/idb.js',
   'data/especies.json', 'icons/icon.svg', 'icons/icon-192.png'
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: 'reload' salta la caché HTTP de GitHub Pages (10 min): siempre los archivos nuevos.
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -34,6 +35,12 @@ self.addEventListener('fetch', (e) => {
       if (res.ok || res.type === 'opaque') c.put(req, res.clone());
       return res;
     }));
+    return;
+  }
+
+  // La página: primero red (para ver cambios ya), caché si no hay red.
+  if (req.mode === 'navigate') {
+    e.respondWith(fetch(req).catch(() => caches.match('index.html')));
     return;
   }
 
