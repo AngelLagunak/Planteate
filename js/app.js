@@ -9,9 +9,9 @@ import * as S from './store.js';
 import * as C from './cuidados.js';
 import * as A from './aprender.js';
 
-export const VERSION = '5.0.0';
+export const VERSION = '5.1.0';
 const app = document.getElementById('app');
-const ui = { filtro: null, seleccion: null, tab: 'cuidar', grafico: 'riego', wikiCargando: {} };
+const ui = { filtro: null, seleccion: null, tab: 'cuidar', grafico: 'riego', wikiCargando: {}, agrupar: localStorage.getItem('pl5_agrupar') === '1', comparar: null };
 
 // ---------------------------------------------------------------
 // Utilidades
@@ -21,14 +21,32 @@ const fecha = (d, opts = { day: 'numeric', month: 'short' }) => d ? new Date(d).
 const hoyIso = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const ir = (ruta) => { location.hash = ruta; };
 
-function toast(texto, { pista = null, ms = 4500 } = {}) {
+/** Aviso abajo. `deshacer`: logIds que el botón Deshacer puede anular. */
+function toast(texto, { pista = null, ms = 4500, deshacer = null } = {}) {
   document.querySelector('.toast')?.remove();
   const el = document.createElement('div');
   el.className = 'toast';
-  el.innerHTML = `<div>${h(texto)}</div>${pista ? `<div class="toast-pista">💡 ${h(pista)}</div>` : ''}`;
+  if (deshacer) ui.deshacer = deshacer;
+  el.innerHTML = `<div class="toast-fila"><div>${h(texto)}</div>${deshacer ? '<button class="toast-btn" data-act="deshacer">Deshacer</button>' : ''}</div>${pista ? `<div class="toast-pista">💡 ${h(pista)}</div>` : ''}`;
   document.body.appendChild(el);
-  setTimeout(() => el.classList.add('fuera'), pista ? ms + 3000 : ms);
-  setTimeout(() => el.remove(), (pista ? ms + 3000 : ms) + 400);
+  const dura = (pista ? ms + 3000 : ms) + (deshacer ? 2000 : 0);
+  setTimeout(() => el.classList.add('fuera'), dura);
+  setTimeout(() => el.remove(), dura + 400);
+}
+
+/** <img> de una foto. El src se rellena después (las fotos privadas llegan de la API o del móvil). */
+function imgFoto(f, attrs = '') {
+  return `<img data-foto="${h(f.fotoId || '')}" ${f.url ? `src="${h(f.url)}"` : ''} alt="" loading="lazy" ${attrs}>`;
+}
+
+let fotosIndex = new Map();
+function cargarFotos() {
+  document.querySelectorAll('img[data-foto]:not([src])').forEach((img) => {
+    const f = fotosIndex.get(img.dataset.foto);
+    if (!f) return;
+    img.classList.add('cargando');
+    S.urlFoto(f).then((url) => { if (url) img.src = url; }).catch((e) => console.warn('Foto:', e)).finally(() => img.classList.remove('cargando'));
+  });
 }
 
 function modal(html, { cerrable = true } = {}) {
@@ -71,6 +89,8 @@ function pedirFoto({ camara = true } = {}) {
 // ---------------------------------------------------------------
 function datos() {
   const v = S.vista();
+  A.registrarExtras(v.especiesExtra);
+  fotosIndex = new Map(v.fotos.map((f) => [f.fotoId, f]));
   const idx = C.indexarAcciones(v.acciones);
   const ultimaFoto = {};
   for (const f of v.fotos) if (!ultimaFoto[f.plantaId] || f.timestamp > ultimaFoto[f.plantaId].timestamp) ultimaFoto[f.plantaId] = f;
@@ -158,6 +178,21 @@ function vistaHome() {
       <button class="btn peq claro" data-act="seleccion">Cancelar</button>
     </div>` : '';
 
+  // Agrupar por "Ubicación": cada sitio con su rejilla; con "Varias" se puede elegir el grupo entero.
+  const hayUbicaciones = activas.some((p) => String(p['Ubicación'] || '').trim());
+  let rejillas = `<div class="rejilla">${lista.map(tarjeta).join('')}</div>`;
+  if (ui.agrupar && hayUbicaciones) {
+    const grupos = new Map();
+    lista.forEach((p) => { const k = String(p['Ubicación'] || '').trim() || 'Sin sitio'; grupos.set(k, [...(grupos.get(k) || []), p]); });
+    rejillas = [...grupos.keys()].sort((a, b) => (a === 'Sin sitio') - (b === 'Sin sitio') || a.localeCompare(b)).map((k) => {
+      const ps = grupos.get(k);
+      const pend = ps.filter((p) => p.estado.riego.nivel !== 'verde').length;
+      return `<div class="grupo-cab"><h3>${h(k)}</h3><span class="sub">${ps.length} ${ps.length === 1 ? 'planta' : 'plantas'}${pend ? ` · 💧 ${pend}` : ''}</span>
+        ${sel ? `<button class="chip" data-act="marcar-grupo" data-ids="${h(ps.map((p) => p.id).join(','))}">Elegir todas</button>` : ''}</div>
+        <div class="rejilla">${ps.map(tarjeta).join('')}</div>`;
+    }).join('');
+  }
+
   const vacia = !activas.length
     ? `<div class="vacio"><div class="vacio-ic">🌱</div><p>Todavía no hay plantas.</p><button class="btn" data-act="ir" data-ruta="#/nueva">Añadir la primera</button></div>`
     : !lista.length ? `<div class="vacio"><p>Ninguna necesita ${C.ETIQUETA[ui.filtro].toLowerCase()}. 🎉</p></div>` : '';
@@ -165,9 +200,9 @@ function vistaHome() {
   return marco(`
     ${cabecera}
     ${tarjetaConsejo}
-    <div class="chips">${chips}<button class="chip ${sel ? 'on' : ''}" data-act="seleccion">☑️ Varias</button></div>
+    <div class="chips">${chips}<button class="chip ${sel ? 'on' : ''}" data-act="seleccion">☑️ Varias</button>${hayUbicaciones ? `<button class="chip ${ui.agrupar ? 'on' : ''}" data-act="agrupar">🏠 Por sitio</button>` : ''}</div>
     ${barraSel}
-    <div class="rejilla">${lista.map(tarjeta).join('')}</div>
+    ${rejillas}
     ${vacia}
     <button class="fab" data-act="ir" data-ruta="#/nueva" aria-label="Nueva planta">+</button>
   `, 'home');
@@ -177,7 +212,7 @@ function tarjeta(p) {
   const c = p.estado.riego;
   const sel = ui.seleccion;
   const marcada = sel?.has(p.id);
-  const foto = p.foto ? `<img src="${h(p.foto.url)}" alt="" loading="lazy">` : `<span class="sin-foto">🌿</span>`;
+  const foto = p.foto ? imgFoto(p.foto) : `<span class="sin-foto">🌿</span>`;
   const emojis = p.estado.pendientes.filter((t) => t !== 'riego').map((t) => C.EMOJI[t]).join('');
   const regarRapido = !sel && c.nivel !== 'verde'
     ? `<button class="regar-rapido" data-act="cuidar" data-id="${p.id}" data-tipo="riego" aria-label="Regar ${h(p.nombre)}">💧</button>` : '';
@@ -215,19 +250,22 @@ function vistaDetalle(id) {
 
   const sellos = hist.riego.slice(-10).reverse().map((r) => `<div class="sello"><b>${r.fecha.getDate()}</b><span>${fecha(r.fecha, { month: 'short' })}</span><i>${h((r.persona || '·')[0])}</i></div>`).join('');
 
-  const tabs = [['cuidar', 'Cuidar'], ['conocela', 'Conócela'], ['historial', 'Historial'], ['fotos', `Fotos${fotos.length ? ` (${fotos.length})` : ''}`]]
+  const tabs = [['cuidar', '🌱 Cuidar'], ['conocela', '📖 Conócela'], ['historial', '📊 Historial'], ['fotos', `📷 Fotos${fotos.length ? ` (${fotos.length})` : ''}`]]
     .map(([k, t]) => `<button class="tab ${ui.tab === k ? 'on' : ''}" data-act="tab" data-tab="${k}">${t}</button>`).join('');
 
   const cuerpo = { cuidar: tabCuidar, conocela: tabConocela, historial: tabHistorial, fotos: tabFotos }[ui.tab](p, { v, hist, fotos });
 
   return marco(`
-    <div class="hero" ${hero ? `style="background-image:url('${h(hero.urlGrande || hero.url)}')"` : ''} ${hero ? `data-act="foto-grande" data-url="${h(hero.urlGrande || hero.url)}"` : 'data-act="subir-foto" data-id="' + id + '"'}>
-      ${hero ? '' : '<span>📷 Añadir foto</span>'}
+    <div class="hero" ${hero ? `data-act="foto-grande" data-foto-id="${h(hero.fotoId || '')}"` : `data-act="subir-foto" data-id="${id}"`}>
+      ${hero ? imgFoto(hero, 'loading="eager"') : '<span>📷 Añadir foto</span>'}
     </div>
     <div class="ficha-cab">
       <h2>${h(p.nombre)}</h2>
-      <div class="sub"><i>${h(p['Nombre científico'] || p.especie?.cientifico || 'Especie sin indicar')}</i>${p.archivada ? ' · 📦 Archivada' : ''}</div>
+      <div class="sub"><i>${h(p['Nombre científico'] || p.especie?.cientifico || 'Especie sin indicar')}</i>${p['Ubicación'] ? ` · 🏠 ${h(p['Ubicación'])}` : ''}${p.archivada ? ' · 📦 Archivada' : ''}</div>
     </div>
+    ${p.especie
+      ? `<button class="aprende-banda" data-act="tab" data-tab="conocela" data-scroll="1"><span>📖</span><div><b>Conoce a tu ${h(p.especie.nombres[0])}</b><small>${h(p.especie.curiosidad || p.especie.origen || '')}</small></div><span>›</span></button>`
+      : `<button class="aprende-banda aviso" data-act="tab" data-tab="conocela" data-scroll="1"><span>❓</span><div><b>¿Qué planta es?</b><small>Dime su especie y te enseño a cuidarla.</small></div><span>›</span></button>`}
     ${p.archivada ? '' : `
     <div class="acciones-principales">
       <button class="btn grande" data-act="cuidar" data-id="${id}" data-tipo="riego">💧 Regar hoy</button>
@@ -237,10 +275,11 @@ function vistaDetalle(id) {
       <button class="btn claro peq" data-act="cuidar" data-id="${id}" data-tipo="nutrir">🌿 Nutrir</button>
       <button class="btn claro peq" data-act="cuidar" data-id="${id}" data-tipo="trasplante">🪴 Trasplantar</button>
       <button class="btn claro peq" data-act="observar" data-id="${id}">📝 Observar</button>
+      <button class="btn claro peq" data-act="preguntar" data-id="${id}">💬 Pregúntale</button>
     </div>`}
     <section class="estados">${estados}</section>
     ${sellos ? `<div class="sellos">${sellos}</div>` : ''}
-    <div class="tabs">${tabs}</div>
+    <div class="tabs" id="tabs">${tabs}</div>
     <section class="tab-cuerpo">${cuerpo}</section>
   `, 'home', { titulo: h(p.nombre), volver: true, extra: `<button class="btn-icono" data-act="ir" data-ruta="#/p/${id}/editar" aria-label="Editar">✏️</button>` });
 }
@@ -299,12 +338,19 @@ function tabCuidar(p) {
 function tabConocela(p) {
   const e = p.especie;
   if (!e) {
-    return `<div class="tarjeta-bloque"><p>No sé qué especie es. Elígela y te cuento cosas de ella.</p>
+    const cientifico = String(p['Nombre científico'] || '').trim();
+    return `<div class="tarjeta-bloque"><h3>¿Qué planta es?</h3>
+      <p>Elige su especie del catálogo y te cuento cómo cuidarla y por qué.</p>
       <select id="elegir-especie"><option value="">— Elegir especie —</option>${A.listaEspecies().map((x) => `<option value="${x.id}">${h(x.nombres[0])} (${h(x.cientifico)})</option>`).join('')}</select>
       <button class="btn peq" data-act="asignar-especie" data-id="${p.id}">Guardar</button>
-      <p class="nota">¿No está? Usa 📷 en ✏️ Editar para identificarla por foto.</p></div>`;
+      <h3>¿No está en la lista?</h3>
+      ${cientifico
+        ? `<p>Puedo crear la ficha de <i>${h(cientifico)}</i> con IA. Revísala después: es orientativa.</p>
+           <button class="btn peq claro" data-act="crear-ficha" data-id="${p.id}" data-nombre="${h(cientifico)}">✨ Crear ficha con IA</button>`
+        : `<p>Ponle el nombre científico en ✏️ Editar (o identifícala con una foto al crearla) y podré crear su ficha.</p>`}
+      </div>`;
   }
-  return bloqueEspecie(e);
+  return bloqueEspecie(e) + `<p class="centro"><button class="btn claro peq" data-act="preguntar" data-id="${p.id}">💬 Pregúntale algo sobre ella</button></p>`;
 }
 
 function bloqueEspecie(e) {
@@ -313,15 +359,18 @@ function bloqueEspecie(e) {
     ui.wikiCargando[e.wiki] = null;
     A.resumenWikipedia(e.wiki).then((r) => { ui.wikiCargando[e.wiki] = r || false; pintar(); }).catch(() => { ui.wikiCargando[e.wiki] = false; });
   }
+  const parrafo = (titulo, texto) => texto ? `<h3>${titulo}</h3><p>${h(texto)}</p>` : '';
+  const listaHtml = (titulo, xs) => xs?.length ? `<h3>${titulo}</h3><ul>${xs.filter(Boolean).map((x) => `<li>${h(x)}</li>`).join('')}</ul>` : '';
   return `
     <div class="tarjeta-bloque aprender">
-      <div class="esp-cab"><b>${h(e.nombres.join(' · '))}</b><i>${h(e.cientifico)} · ${h(e.familia)}</i></div>
-      <h3>🌍 De dónde viene</h3><p>${h(e.origen)}</p>
-      <h3>🤔 Por qué se cuida así</h3><p>${h(e.porQue)}</p>
-      <h3>💧 Cómo saber si necesita agua</h3><p>${h(e.riego.comoSaber)}</p>
-      <h3>⚠️ Errores típicos</h3><ul>${e.errores.map((x) => `<li>${h(x)}</li>`).join('')}</ul>
-      <h3>💡 Trucos</h3><ul>${e.pistas.map((x) => `<li>${h(x)}</li>`).join('')}</ul>
-      <h3>✨ Curiosidad</h3><p>${h(e.curiosidad)}</p>
+      <div class="esp-cab"><b>${h((e.nombres || []).join(' · '))}</b><i>${h(e.cientifico)}${e.familia ? ' · ' + h(e.familia) : ''}</i>
+        ${e.generadaConIA ? '<span class="etiqueta-ia">✨ Ficha creada con IA: orientativa</span>' : ''}</div>
+      ${parrafo('🌍 De dónde viene', e.origen)}
+      ${parrafo('🤔 Por qué se cuida así', e.porQue)}
+      ${parrafo('💧 Cómo saber si necesita agua', e.riego?.comoSaber)}
+      ${listaHtml('⚠️ Errores típicos', e.errores)}
+      ${listaHtml('💡 Trucos', e.pistas)}
+      ${parrafo('✨ Curiosidad', e.curiosidad)}
       ${wiki ? `<h3>📚 Wikipedia</h3>${wiki.imagen ? `<img class="wiki-img" src="${h(wiki.imagen)}" alt="" loading="lazy">` : ''}<p>${h(wiki.texto)}</p><a href="${h(wiki.url)}" target="_blank" rel="noopener">Leer más en Wikipedia ↗</a>`
         : wiki === null ? '<p class="nota">Cargando Wikipedia…</p>' : ''}
     </div>`;
@@ -381,17 +430,36 @@ function grafico(lista, c) {
 
 function tabFotos(p, { fotos }) {
   const diag = ui.diagnostico?.id === p.id ? ui.diagnostico : null;
+  const fechaLarga = (t) => fecha(t, { day: 'numeric', month: 'short', year: '2-digit' });
+  let comparador = '';
+  if (fotos.length >= 2 && ui.comparar?.id === p.id) {
+    // fotos va de más nueva a más vieja: por defecto, la más antigua frente a la más reciente.
+    const a = fotosIndex.get(ui.comparar.a) || fotos[fotos.length - 1];
+    const b = fotosIndex.get(ui.comparar.b) || fotos[0];
+    const opciones = (sel) => fotos.map((f) => `<option value="${h(f.fotoId)}" ${f.fotoId === sel ? 'selected' : ''}>${fechaLarga(f.timestamp)}</option>`).join('');
+    const dias = Math.abs(C.diasEntre(new Date(a.timestamp), new Date(b.timestamp)));
+    comparador = `<div class="tarjeta-bloque comparar">
+      <h3>↔️ Antes y después · ${dias} días</h3>
+      <div class="comparar-par">
+        <div>${imgFoto(a)}<select data-cambio="comparar-a">${opciones(a.fotoId)}</select></div>
+        <div>${imgFoto(b)}<select data-cambio="comparar-b">${opciones(b.fotoId)}</select></div>
+      </div>
+      <p class="nota">Fíjate en hojas nuevas, color y si se inclina hacia la luz.</p>
+    </div>`;
+  }
   return `
     <div class="acciones-sec">
       <button class="btn peq" data-act="subir-foto" data-id="${p.id}">📷 Añadir foto</button>
       <button class="btn claro peq" data-act="diagnosticar" data-id="${p.id}">🩺 ¿Cómo está de salud?</button>
+      ${fotos.length >= 2 ? `<button class="btn claro peq" data-act="comparar" data-id="${p.id}">↔️ ${ui.comparar?.id === p.id ? 'Cerrar comparación' : 'Comparar'}</button>` : ''}
     </div>
     ${diag ? `<div class="tarjeta-bloque diag">${diag.cargando ? '<p>Analizando la foto…</p>' : diag.html}</div>` : ''}
+    ${comparador}
     <div class="fotos">${fotos.map((f) => `
       <div class="foto-mini">
-        <img src="${h(f.url)}" alt="" loading="lazy" data-act="foto-grande" data-url="${h(f.urlGrande || f.url)}">
-        <span>${fecha(f.timestamp, { day: 'numeric', month: 'short', year: '2-digit' })}</span>
-        <button class="btn-icono peq" data-act="borrar-foto" data-foto="${f.fotoId}" aria-label="Borrar">🗑</button>
+        ${imgFoto(f, `data-act="foto-grande" data-foto-id="${h(f.fotoId)}"`)}
+        <span>${fechaLarga(f.timestamp)}${f._pendiente ? ' · ⏳ sin subir' : ''}</span>
+        <button class="btn-icono peq" data-act="borrar-foto" data-foto-borrar="${h(f.fotoId)}" aria-label="Borrar">🗑</button>
       </div>`).join('') || '<p class="nota">Sin fotos. Una foto cada mes enseña mucho: verás cómo crece.</p>'}</div>`;
 }
 
@@ -548,14 +616,14 @@ function vistaEspecie(id) {
     ${bloqueEspecie(e)}
     <div class="tarjeta-bloque">
       <h3>Ficha rápida</h3>
-      ${fila('💧 Prim–verano', r(e.riego.cv))}${fila('💧 Oto–invierno', r(e.riego.oi))}
-      ${fila('Cantidad', e.riego.cantidad)}${fila('Método', e.riego.metodo)}
-      ${fila('🌿 Nutrir', `${e.nutrir.cuando}. ${e.nutrir.tipo}`)}
-      ${fila('🪴 Trasplante', `${r(e.trasplante)}. ${e.trasplante.nota}`)}
-      ${fila('☀️ Luz', `${e.luz.tipo} · ${e.luz.exposicion} · ${e.luz.horas}`)}
+      ${fila('💧 Prim–verano', r(e.riego?.cv))}${fila('💧 Oto–invierno', r(e.riego?.oi))}
+      ${fila('Cantidad', e.riego?.cantidad)}${fila('Método', e.riego?.metodo)}
+      ${fila('🌿 Nutrir', [e.nutrir?.cuando, e.nutrir?.tipo].filter(Boolean).join('. '))}
+      ${fila('🪴 Trasplante', [r(e.trasplante), e.trasplante?.nota].filter(Boolean).join('. '))}
+      ${fila('☀️ Luz', [e.luz?.tipo, e.luz?.exposicion, e.luz?.horas].filter(Boolean).join(' · '))}
       ${fila('Sustrato', e.sustrato)}${fila('🌡 Temperatura', e.temperatura)}
-      <div class="dato ${e.toxica ? 'aviso' : ''}"><span>Mascotas</span><div>${h(e.toxicidad)}</div></div>
-    </div>`, 'aprender', { titulo: h(e.nombres[0]), volver: true });
+      ${e.toxicidad ? `<div class="dato ${e.toxica ? 'aviso' : ''}"><span>Mascotas</span><div>${h(e.toxicidad)}</div></div>` : ''}
+    </div>`, 'aprender', { titulo: h(e.nombres?.[0] || e.cientifico), volver: true });
 }
 
 function vistaAjustes() {
@@ -585,8 +653,13 @@ function vistaAjustes() {
       </form>
       ${c.api ? `<button class="btn peq claro" data-act="compartir">🔗 Copiar enlace para otra persona</button>` : ''}
     </div>
+    ${S.esDemo() || !c.api ? '' : `<div class="tarjeta-bloque">
+      <h3>🔔 Avisos al móvil</h3>
+      ${bloqueAvisos()}
+    </div>`}
     <div class="tarjeta-bloque">
       <h3>Datos</h3>
+      ${S.fotosSinSubir() ? `<p class="nota">⏳ ${S.fotosSinSubir()} fotos esperando red para subirse.</p>` : ''}
       <button class="btn peq claro" data-act="exportar">⬇️ Descargar copia (JSON)</button>
       ${S.esDemo() ? '' : '<button class="btn peq claro" data-act="demo">🧪 Probar con datos de ejemplo</button>'}
     </div>
@@ -595,6 +668,23 @@ function vistaAjustes() {
       <p><b>Android (Chrome):</b> menú ⋮ → <i>Instalar aplicación</i>.<br><b>iPhone (Safari):</b> compartir → <i>Añadir a pantalla de inicio</i>.</p>
     </div>
     <p class="nota centro">Planteate ${VERSION}</p>`, 'ajustes', { titulo: 'Ajustes' });
+}
+
+/** Estado de los avisos diarios (se pide al servidor al abrir Ajustes). */
+function bloqueAvisos() {
+  const a = ui.avisos;
+  if (a === undefined) {
+    ui.avisos = null;
+    S.estadoAvisos().then((r) => { ui.avisos = r || false; pintar(); }).catch((e) => { ui.avisos = { error: e.message }; pintar(); });
+  }
+  if (!a) return '<p class="nota">Comprobando…</p>';
+  if (a.error) return `<p class="nota">No se pudo comprobar: ${h(a.error)}. ¿Has actualizado el Apps Script a la 5.1?</p>`;
+  const canales = a.canales.length ? a.canales.join(', ') : 'ninguno';
+  return `
+    <p>Canales: <b>${h(canales)}</b> · Aviso diario a las 9:00: <b>${a.programado ? 'activado ✅' : 'no activado'}</b></p>
+    ${a.ntfyTopic ? `<p class="nota">ntfy: instala la app <b>ntfy</b> y suscríbete al tema <code>${h(a.ntfyTopic)}</code>.</p>` : ''}
+    ${a.canales.length ? '<button class="btn peq claro" data-act="probar-aviso">📨 Enviar aviso de prueba</button>' : '<p class="nota">Configúralo en el Apps Script: mira el README, sección "Avisos al móvil".</p>'}
+    ${!a.programado && a.canales.length ? '<p class="nota">Para activarlo, ejecuta <code>activarAvisoDiario</code> en el editor de Apps Script.</p>' : ''}`;
 }
 
 function vistaBienvenida() {
@@ -635,6 +725,36 @@ function modalObservar(id) {
     <form id="form-observar" class="formulario" data-id="${id}"><textarea name="detalle" rows="3" placeholder="¿Qué has visto?" required></textarea><button class="btn" type="submit">Guardar</button></form>`);
 }
 
+/** Lo que sabemos de una planta, para Gemini y el diagnóstico. */
+function contextoPlanta(id) {
+  const { v, plantas } = datos();
+  const p = plantas.find((x) => x.id === id);
+  const e = p.especie;
+  const r = p.estado.riego;
+  const obs = v.acciones.filter((a) => a.plantaId === id && ['observacion', 'diagnostico'].includes(a.tipoAccion))
+    .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 5).map((a) => `${fecha(a.timestamp)}: ${a.detalle}`);
+  return {
+    nombrePlanta: p.nombre,
+    especie: e ? `${e.nombres?.[0] || ''} (${e.cientifico})` : (p['Nombre científico'] || 'desconocida'),
+    estacion: C.estacion().nombre,
+    ubicacion: p['Ubicación'] || null,
+    riego: { nivel: r.nivel, diasDesde: r.diasDesde, freqDias: r.freq.dias, sinReferencia: r.sinReferencia, frecuencia: C.textoFrecuencia(r.freq) },
+    nutrir: p.estado.nutrir.diasDesde,
+    cuidadosEspecie: e ? { luz: e.luz, sustrato: e.sustrato, temperatura: e.temperatura, comoSaber: e.riego?.comoSaber } : null,
+    ultimasObservaciones: obs,
+    notas: p.NotaPersonal || null
+  };
+}
+
+function modalPreguntar(id) {
+  const rapidas = ['¿Por qué se le ponen amarillas las hojas?', '¿Dónde la pongo en casa?', '¿Cómo la reproduzco?', '¿Es normal que crezca tan lento?'];
+  modal(`<h2>💬 Pregúntale</h2>
+    <p class="nota">Responde una IA que conoce su especie y su historial. Es orientativo.</p>
+    <div class="chips">${rapidas.map((r) => `<button class="chip" data-act="pregunta-rapida" data-texto="${h(r)}">${h(r)}</button>`).join('')}</div>
+    <form id="form-preguntar" class="formulario" data-id="${id}"><textarea name="pregunta" rows="3" maxlength="500" placeholder="Escribe tu pregunta…" required></textarea><button class="btn" type="submit">Preguntar</button></form>
+    <div id="respuesta"></div>`);
+}
+
 function modalArchivar(id) {
   modal(`<h2>📦 Archivar planta</h2><p>Se guarda todo su historial. Puedes restaurarla cuando quieras.</p>
     <div class="chips"><button class="chip" data-act="archivar-motivo" data-id="${id}" data-motivo="muerta">💀 Murió</button>
@@ -657,16 +777,24 @@ const acciones = {
   'accion-masiva': (el) => {
     const ids = [...ui.seleccion];
     ui.seleccion = null;
-    S.registrarAccion(ids, el.dataset.tipo);
-    toast(`${C.EMOJI[el.dataset.tipo]} ${C.VERBO[el.dataset.tipo]}: ${ids.length} plantas`);
+    const logIds = S.registrarAccion(ids, el.dataset.tipo);
+    toast(`${C.EMOJI[el.dataset.tipo]} ${C.VERBO[el.dataset.tipo]}: ${ids.length} plantas`, { deshacer: logIds });
   },
+  'marcar-grupo': (el) => { el.dataset.ids.split(',').forEach((id) => ui.seleccion.add(id)); pintar(); },
+  agrupar: () => { ui.agrupar = !ui.agrupar; localStorage.setItem('pl5_agrupar', ui.agrupar ? '1' : '0'); pintar(); },
   cuidar: (el) => {
     const { plantas } = datos();
     const p = plantas.find((x) => x.id === el.dataset.id);
     const tipo = el.dataset.tipo;
-    S.registrarAccion(p.id, tipo);
+    const logIds = S.registrarAccion(p.id, tipo);
     if (tipo === 'riego' && p.RiegoPospuestoHasta) S.guardarPlanta(p.id, { RiegoPospuestoHasta: '' });
-    toast(`${C.EMOJI[tipo]} ${p.nombre}: ${C.ETIQUETA[tipo].toLowerCase()} anotado`, { pista: A.pistaTras(tipo, p.especie) });
+    toast(`${C.EMOJI[tipo]} ${p.nombre}: ${C.ETIQUETA[tipo].toLowerCase()} anotado`, { pista: A.pistaTras(tipo, p.especie), deshacer: logIds });
+  },
+  deshacer: () => {
+    if (!ui.deshacer) return;
+    S.deshacer(ui.deshacer);
+    ui.deshacer = null;
+    toast('↩️ Deshecho');
   },
   posponer: (el) => modalPosponer(el.dataset.id),
   'posponer-dias': (el) => {
@@ -688,23 +816,54 @@ const acciones = {
     const id = document.getElementById('elegir-especie').value;
     const e = A.especiePorId(id);
     if (!e) return;
-    S.guardarPlanta(el.dataset.id, { especieId: id, 'Nombre científico': e.cientifico, Familia: e.familia });
+    S.guardarPlanta(el.dataset.id, { especieId: id, 'Nombre científico': e.cientifico, Familia: e.familia || '' });
   },
-  tab: (el) => { ui.tab = el.dataset.tab; pintar(); },
+  'crear-ficha': async (el) => {
+    el.disabled = true;
+    el.textContent = '✨ Creando ficha… (unos segundos)';
+    try {
+      const e = await S.fichaEspecie(el.dataset.nombre);
+      S.guardarPlanta(el.dataset.id, { especieId: e.id });
+      toast(`✨ Ficha de ${e.nombres?.[0] || e.cientifico} creada. Revísala: es orientativa.`);
+    } catch (e) {
+      toast('No se pudo crear la ficha: ' + e.message);
+      pintar();
+    }
+  },
+  preguntar: (el) => modalPreguntar(el.dataset.id),
+  'pregunta-rapida': (el) => { const t = document.querySelector('#form-preguntar textarea'); t.value = el.dataset.texto; t.focus(); },
+  tab: (el) => {
+    ui.tab = el.dataset.tab;
+    pintar();
+    if (el.dataset.scroll) document.getElementById('tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
   grafico: (el) => { ui.grafico = el.dataset.tipo; pintar(); },
-  'foto-grande': (el) => modal(`<img class="foto-grande" src="${h(el.dataset.url)}" alt=""><button class="btn claro" data-act="cerrar">Cerrar</button>`),
+  'foto-grande': (el) => {
+    const f = fotosIndex.get(el.dataset.fotoId);
+    if (!f) return;
+    modal(`${imgFoto(f, 'class="foto-grande"')}<button class="btn claro" data-act="cerrar">Cerrar</button>`);
+    cargarFotos();
+  },
+  comparar: (el) => { ui.comparar = ui.comparar?.id === el.dataset.id ? null : { id: el.dataset.id }; pintar(); },
   cerrar: () => cerrarModal(),
   'subir-foto': async (el) => {
     const file = await pedirFoto({ camara: false });
     if (!file) return;
-    if (!navigator.onLine && !S.esDemo()) return toast('📴 Las fotos necesitan conexión');
-    toast('📤 Subiendo foto…', { ms: 20000 });
-    try { const f = await comprimirFoto(file); await S.subirFoto(el.dataset.id, f.base64, f.mime); toast('📷 Foto guardada'); }
-    catch (e) { toast('No se pudo subir: ' + e.message); }
+    try {
+      const f = await comprimirFoto(file);
+      await S.subirFoto(el.dataset.id, f.base64, f.mime);
+      toast(navigator.onLine || S.esDemo() ? '📷 Foto guardada' : '📷 Foto guardada en el móvil. Se subirá cuando haya red.');
+    } catch (e) { toast('No se pudo guardar la foto: ' + e.message); }
   },
   'borrar-foto': async (el) => {
     if (!confirm('¿Borrar esta foto?')) return;
-    try { await S.eliminarFoto(el.dataset.foto); } catch (e) { toast('No se pudo borrar: ' + e.message); }
+    try { await S.eliminarFoto(el.dataset.fotoBorrar); } catch (e) { toast('No se pudo borrar: ' + e.message); }
+  },
+  'probar-aviso': async (el) => {
+    el.disabled = true;
+    try { const r = await S.probarAviso(); toast(`📨 Aviso enviado por ${r.enviados} canal(es). Mira el móvil.`); }
+    catch (e) { toast('No se pudo enviar: ' + e.message); }
+    el.disabled = false;
   },
   diagnosticar: async (el) => {
     const id = el.dataset.id;
@@ -713,7 +872,7 @@ const acciones = {
     ui.diagnostico = { id, cargando: true }; pintar();
     try {
       const f = await comprimirFoto(file);
-      const r = await S.diagnosticar(id, f.base64, f.mime);
+      const r = await S.diagnosticar(id, f.base64, f.mime, contextoPlanta(id));
       ui.diagnostico = { id, html: r.ok ? `<h3>🩺 Diagnóstico</h3>${r.diagnostico.resumen.map((l) => `<p>${h(l)}</p>`).join('')}<p class="nota">Orientativo. Ante dudas, un vivero de confianza.</p>` : `<p>${h(r.motivo)}</p>` };
     } catch (e) { ui.diagnostico = { id, html: `<p>No se pudo analizar: ${h(e.message)}</p>` }; }
     pintar();
@@ -767,9 +926,29 @@ document.addEventListener('click', (ev) => {
   acciones[el.dataset.act](el, ev);
 });
 
+document.addEventListener('change', (ev) => {
+  const cambio = ev.target.dataset?.cambio;
+  if (cambio === 'comparar-a' || cambio === 'comparar-b') {
+    ui.comparar = { ...ui.comparar, [cambio.slice(-1)]: ev.target.value };
+    ev.target.blur();
+    pintar();
+  }
+});
+
 document.addEventListener('submit', (ev) => {
   const form = ev.target;
   ev.preventDefault();
+  if (form.id === 'form-preguntar') {
+    const caja = document.getElementById('respuesta');
+    const boton = form.querySelector('button');
+    boton.disabled = true;
+    caja.innerHTML = '<p class="nota">Pensando…</p>';
+    S.preguntar(form.pregunta.value.trim(), contextoPlanta(form.dataset.id))
+      .then((r) => { caja.innerHTML = `<div class="respuesta">${h(r).replace(/\n/g, '<br>')}</div>`; })
+      .catch((e) => { caja.innerHTML = `<p class="nota">No se pudo responder: ${h(e.message)}</p>`; })
+      .finally(() => { boton.disabled = false; });
+    return;
+  }
   if (form.id === 'form-quien') { S.elegirPersona(form.nombre.value); cerrarModal(); pintar(); }
   else if (form.id === 'form-observar') {
     const detalle = form.detalle.value.trim();
@@ -850,6 +1029,7 @@ export function pintar() {
     : a === 'ajustes' ? vistaAjustes()
     : vistaHome();
 
+  cargarFotos();
   if (!S.persona() && !document.querySelector('.modal-fondo')) modalQuien();
 }
 
@@ -878,4 +1058,9 @@ A.cargarEspecies().catch((e) => console.warn('Catálogo:', e)).finally(() => {
   if (S.conf() && !S.esDemo()) S.sincronizar();
 });
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW:', e));
+if ('serviceWorker' in navigator) {
+  // Al publicar una versión nueva, el SW nuevo toma el control: recargar una vez para usarla.
+  const habiaVersion = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (habiaVersion) location.reload(); });
+  navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch((e) => console.warn('SW:', e));
+}

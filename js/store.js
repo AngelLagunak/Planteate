@@ -10,6 +10,7 @@
 // Las operaciones son idempotentes: reenviar no duplica.
 
 import { DEMO } from './demo.js';
+import * as idb from './idb.js';
 
 const K = { conf: 'pl5_conf', snap: 'pl5_snap', cola: 'pl5_cola', persona: 'pl5_persona', sync: 'pl5_sync' };
 
@@ -76,7 +77,9 @@ export function vista() {
     ...base,
     plantas: base.plantas.map((p) => ({ ...p })),
     acciones: base.acciones.slice(),
-    personas: base.personas.slice()
+    personas: base.personas.slice(),
+    fotos: base.fotos.concat(fotosPendientes),
+    especiesExtra: base.especiesExtra || []
   };
   const logIds = new Set(v.acciones.map((a) => String(a.logId)));
   for (const op of estado.cola) aplicar(v, op, logIds);
@@ -91,6 +94,9 @@ function aplicar(v, op, logIds) {
     const p = v.plantas.find((x) => x.id === op.id);
     if (p) Object.assign(p, op.campos, { _pendiente: true });
     else v.plantas.push({ id: op.id, Archivada: 'FALSE', ...op.campos, _pendiente: true });
+  } else if (op.t === 'anular') {
+    const fuera = new Set(op.logIds);
+    v.acciones = v.acciones.filter((a) => !fuera.has(String(a.logId)));
   } else if (op.t === 'persona') {
     if (!v.personas.some((n) => n.toLowerCase() === op.nombre.toLowerCase())) v.personas.push(op.nombre);
   }
@@ -109,11 +115,25 @@ function encolar(...ops) {
   programarEnvio();
 }
 
+/** Devuelve los logIds creados (para poder deshacer). */
 export function registrarAccion(plantaIds, tipoAccion, detalle = '') {
   const ts = new Date().toISOString();
-  encolar(...[].concat(plantaIds).map((plantaId) => ({
+  const ops = [].concat(plantaIds).map((plantaId) => ({
     t: 'accion', logId: nuevoId('log'), plantaId, tipoAccion, timestamp: ts, persona: estado.persona || '', detalle
-  })));
+  }));
+  encolar(...ops);
+  return ops.map((o) => o.logId);
+}
+
+/** Deshacer: si aún no se envió, se quita de la cola; si ya está en la hoja, se borra allí. */
+export function deshacer(logIds) {
+  const enCola = new Set(estado.cola.filter((op) => op.t === 'accion').map((op) => op.logId));
+  const yaEnviadas = logIds.filter((id) => !enCola.has(id));
+  estado.cola = estado.cola.filter((op) => !(op.t === 'accion' && logIds.includes(op.logId)));
+  guardar(K.cola, estado.cola);
+  cacheVista = null;
+  if (yaEnviadas.length) encolar({ t: 'anular', logIds: yaEnviadas });
+  else avisar();
 }
 
 export function guardarPlanta(id, campos) {
@@ -206,6 +226,7 @@ export function sincronizar() {
       cacheVista = null;
       avisar();
       if (estado.sync === 'ok' && estado.cola.length) programarEnvio(100);
+      if (estado.sync === 'ok') subirPendientes();
     });
   return enCurso;
 }
@@ -215,37 +236,127 @@ window.addEventListener('offline', () => { estado.sync = 'offline'; avisar(); })
 document.addEventListener('visibilitychange', () => { if (!document.hidden) programarEnvio(100); });
 
 // ---------------------------------------------------------------
-// Fotos, identificación y diagnóstico: solo con red
+// Fotos: se guardan en el móvil (IndexedDB) y se suben cuando hay red.
+// En la hoja/Drive son privadas: se piden a la API una vez y se guardan.
 // ---------------------------------------------------------------
-export async function subirFoto(plantaId, base64, mime) {
-  if (esDemo()) {
-    const url = `data:${mime};base64,${base64}`;
-    estado.snap.fotos.push({ fotoId: nuevoId('foto'), plantaId, url, urlGrande: url, timestamp: new Date().toISOString() });
-    guardar(K.snap, estado.snap); cacheVista = null; avisar();
-    return;
+const fotosPendientes = [];      // metadatos de fotos aún sin subir
+const urlsFoto = new Map();      // fotoId → objectURL ya cargada
+
+idb.todos('pendientes').then((lista) => {
+  fotosPendientes.push(...lista.map(({ fotoId, plantaId, timestamp }) => ({ fotoId, plantaId, timestamp, _pendiente: true })));
+  cacheVista = null; avisar();
+  subirPendientes();
+}).catch((e) => console.warn('IndexedDB:', e));
+
+const aBlob = (base64, mime) => new Blob([Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))], { type: mime });
+
+/** URL lista para <img>. Fotos antiguas con url pública se usan tal cual. */
+export async function urlFoto(foto) {
+  if (foto.url) return foto.url;
+  if (urlsFoto.has(foto.fotoId)) return urlsFoto.get(foto.fotoId);
+  let blob = await idb.leer('fotos', foto.fotoId);
+  if (!blob) {
+    const p = await idb.leer('pendientes', foto.fotoId);
+    if (p) blob = aBlob(p.base64, p.mime);
   }
-  const foto = await api('subirFoto', { plantaId, base64, mime }, 60000);
-  estado.snap.fotos.push(foto);
-  guardar(K.snap, estado.snap); cacheVista = null; avisar();
+  if (!blob && !esDemo()) {
+    const r = await api('foto', { fotoId: foto.fotoId }, 60000);
+    blob = aBlob(r.base64, r.mime);
+    await idb.guardar('fotos', foto.fotoId, blob);
+  }
+  if (!blob) return null;
+  const url = URL.createObjectURL(blob);
+  urlsFoto.set(foto.fotoId, url);
+  return url;
 }
+
+export async function subirFoto(plantaId, base64, mime) {
+  const foto = { fotoId: nuevoId('foto'), plantaId, timestamp: new Date().toISOString() };
+  if (esDemo()) {
+    await idb.guardar('fotos', foto.fotoId, aBlob(base64, mime));
+    estado.snap.fotos.push(foto);
+    guardar(K.snap, estado.snap);
+  } else {
+    await idb.guardar('pendientes', foto.fotoId, { ...foto, base64, mime });
+    fotosPendientes.push({ ...foto, _pendiente: true });
+    subirPendientes();
+  }
+  cacheVista = null; avisar();
+  return foto.fotoId;
+}
+
+let subiendo = false;
+async function subirPendientes() {
+  if (subiendo || esDemo() || !estado.conf?.api || !navigator.onLine) return;
+  subiendo = true;
+  try {
+    for (const p of await idb.todos('pendientes')) {
+      const r = await api('subirFoto', p, 90000);
+      await idb.guardar('fotos', p.fotoId, aBlob(p.base64, p.mime));
+      await idb.borrar('pendientes', p.fotoId);
+      const i = fotosPendientes.findIndex((f) => f.fotoId === p.fotoId);
+      if (i !== -1) fotosPendientes.splice(i, 1);
+      if (!estado.snap.fotos.some((f) => f.fotoId === r.fotoId)) estado.snap.fotos.push(r);
+      guardar(K.snap, estado.snap);
+      cacheVista = null; avisar();
+    }
+  } catch (e) {
+    console.warn('Subida de fotos:', e);
+  } finally {
+    subiendo = false;
+  }
+}
+window.addEventListener('online', () => subirPendientes());
+
+export const fotosSinSubir = () => fotosPendientes.length;
 
 export async function eliminarFoto(fotoId) {
-  if (!esDemo()) await api('eliminarFoto', { fotoId });
-  estado.snap.fotos = estado.snap.fotos.filter((f) => f.fotoId !== fotoId);
-  guardar(K.snap, estado.snap); cacheVista = null; avisar();
+  const pendiente = fotosPendientes.findIndex((f) => f.fotoId === fotoId);
+  if (pendiente !== -1) {
+    fotosPendientes.splice(pendiente, 1);
+    await idb.borrar('pendientes', fotoId);
+  } else {
+    if (!esDemo()) await api('eliminarFoto', { fotoId });
+    estado.snap.fotos = estado.snap.fotos.filter((f) => f.fotoId !== fotoId);
+    guardar(K.snap, estado.snap);
+  }
+  await idb.borrar('fotos', fotoId).catch(() => {});
+  cacheVista = null; avisar();
 }
 
+// ---------------------------------------------------------------
+// Pl@ntNet y Gemini: necesitan red
+// ---------------------------------------------------------------
+const SIN_DEMO = { ok: false, motivo: 'En modo de prueba no está disponible. Conecta tu hoja en Ajustes.' };
+
 export async function identificar(base64, mime) {
-  if (esDemo()) return { ok: false, motivo: 'En modo de prueba no se identifica. Conecta tu hoja en Ajustes.' };
+  if (esDemo()) return SIN_DEMO;
   return api('identificar', { base64, mime }, 60000);
 }
 
-export async function diagnosticar(plantaId, base64, mime) {
-  if (esDemo()) return { ok: false, motivo: 'En modo de prueba no se diagnostica. Conecta tu hoja en Ajustes.' };
-  const r = await api('diagnosticar', { plantaId, base64, mime }, 60000);
+export async function diagnosticar(plantaId, base64, mime, contexto) {
+  if (esDemo()) return SIN_DEMO;
+  const r = await api('diagnosticar', { plantaId, base64, mime, contexto }, 90000);
   programarEnvio(100); // trae el evento de diagnóstico al historial
   return r;
 }
+
+export async function preguntar(pregunta, contexto) {
+  if (esDemo()) throw new Error(SIN_DEMO.motivo);
+  return (await api('preguntar', { pregunta, contexto }, 60000)).respuesta;
+}
+
+/** Crea con IA la ficha de una especie que no está en el catálogo. */
+export async function fichaEspecie(nombreCientifico) {
+  if (esDemo()) throw new Error(SIN_DEMO.motivo);
+  const e = await api('fichaEspecie', { nombreCientifico }, 90000);
+  estado.snap.especiesExtra = [...(estado.snap.especiesExtra || []).filter((x) => x.id !== e.id), e];
+  guardar(K.snap, estado.snap); cacheVista = null; avisar();
+  return e;
+}
+
+export const estadoAvisos = () => (esDemo() ? Promise.resolve(null) : api('avisos'));
+export const probarAviso = () => api('probarAviso');
 
 /** Copia completa en JSON (para guardar a mano). */
 export function exportar() {
