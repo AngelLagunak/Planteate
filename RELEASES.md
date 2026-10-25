@@ -6,6 +6,27 @@ manual); este archivo es solo el histórico.
 
 ---
 
+## V5.1.2 — revisión de seguridad
+
+- Enlaces `#/conectar`: solo URLs de Apps Script y confirmación si cambia
+  la hoja conectada (antes un enlace malicioso podía desviar los datos).
+- CSP en `index.html` y `referrer` desactivado.
+- Ids escapados en todo el HTML generado; enlaces externos solo `https`.
+- Backend: protección contra inyección de fórmulas, validación de ids,
+  tipos de acción, nombres de columna y tamaño de lote.
+- Gemini prueba otro modelo también si el actual está saturado (5xx) o sin cupo.
+- Servidor local: no permite salir de la carpeta del proyecto y envía el tamaño de cada archivo.
+- Commits nuevos con el correo privado de GitHub.
+
+---
+
+## V5.1.1 — arreglos con datos reales
+
+- Enlace de conexión en bucle, fotos de 2 en 2, reintento de sincronización,
+  referencia para cuidados sin registros, 3 especies nuevas y sinónimos.
+
+---
+
 ## V5.1 — avisos, deshacer y aprender más
 
 **Uso diario**

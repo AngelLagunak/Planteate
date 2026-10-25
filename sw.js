@@ -1,6 +1,6 @@
 // PLANTEATE 5.0 — service worker: la app abre sin red.
 // Sube VERSION en cada cambio para que los móviles cojan los archivos nuevos.
-const VERSION = 'pl5-v3';
+const VERSION = 'pl5-v4';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
   'js/app.js', 'js/store.js', 'js/cuidados.js', 'js/aprender.js', 'js/demo.js', 'js/idb.js',
@@ -27,7 +27,7 @@ self.addEventListener('fetch', (e) => {
   if (url.hostname.endsWith('script.google.com') || url.hostname.endsWith('script.googleusercontent.com') || url.hostname.endsWith('wikipedia.org')) return;
 
   // Fotos de Drive: primero caché (no cambian nunca).
-  if (url.hostname === 'lh3.googleusercontent.com' || url.hostname === 'upload.wikimedia.org') {
+  if (url.hostname === 'lh3.googleusercontent.com' || url.hostname.endsWith('.wikimedia.org')) {
     e.respondWith(caches.open('pl5-img').then(async (c) => {
       const hit = await c.match(req);
       if (hit) return hit;

@@ -9,7 +9,7 @@ import * as S from './store.js';
 import * as C from './cuidados.js';
 import * as A from './aprender.js';
 
-export const VERSION = '5.1.1';
+export const VERSION = '5.1.2';
 const app = document.getElementById('app');
 const ui = { filtro: null, seleccion: null, tab: 'cuidar', grafico: 'riego', wikiCargando: {}, agrupar: localStorage.getItem('pl5_agrupar') === '1', comparar: null };
 
@@ -20,6 +20,10 @@ const h = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<'
 const fecha = (d, opts = { day: 'numeric', month: 'short' }) => d ? new Date(d).toLocaleDateString('es-ES', opts) : '';
 const hoyIso = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const ir = (ruta) => { location.hash = ruta; };
+/** Solo se aceptan URLs de Apps Script: así un enlace malicioso no puede desviar tus datos a otro servidor. */
+const urlApiValida = (u) => /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/.test(String(u || ''));
+/** Enlaces externos solo https (evita javascript: si una fuente externa viniera manipulada). */
+const urlSegura = (u) => (/^https:\/\//.test(String(u || '')) ? u : '#');
 
 /** Aviso abajo. `deshacer`: logIds que el botón Deshacer puede anular. */
 function toast(texto, { pista = null, ms = 4500, deshacer = null } = {}) {
@@ -215,9 +219,9 @@ function tarjeta(p) {
   const foto = p.foto ? imgFoto(p.foto) : `<span class="sin-foto">🌿</span>`;
   const emojis = p.estado.pendientes.filter((t) => t !== 'riego').map((t) => C.EMOJI[t]).join('');
   const regarRapido = !sel && c.nivel !== 'verde'
-    ? `<button class="regar-rapido" data-act="cuidar" data-id="${p.id}" data-tipo="riego" aria-label="Regar ${h(p.nombre)}">💧</button>` : '';
+    ? `<button class="regar-rapido" data-act="cuidar" data-id="${h(p.id)}" data-tipo="riego" aria-label="Regar ${h(p.nombre)}">💧</button>` : '';
   return `
-    <div class="tarjeta borde-${p.estado.color} ${marcada ? 'marcada' : ''}" data-act="${sel ? 'marcar' : 'abrir'}" data-id="${p.id}">
+    <div class="tarjeta borde-${p.estado.color} ${marcada ? 'marcada' : ''}" data-act="${sel ? 'marcar' : 'abrir'}" data-id="${h(p.id)}">
       <div class="tarjeta-foto">${foto}${emojis ? `<span class="esquina">${emojis}</span>` : ''}${sel ? `<span class="check">${marcada ? '✓' : ''}</span>` : ''}${regarRapido}</div>
       <div class="tarjeta-info">
         <div class="tarjeta-nombre">${h(p.nombre)}${p._pendiente ? ' <span class="pend" title="Pendiente de guardar">•</span>' : ''}</div>
@@ -256,7 +260,7 @@ function vistaDetalle(id) {
   const cuerpo = { cuidar: tabCuidar, conocela: tabConocela, historial: tabHistorial, fotos: tabFotos }[ui.tab](p, { v, hist, fotos });
 
   return marco(`
-    <div class="hero" ${hero ? `data-act="foto-grande" data-foto-id="${h(hero.fotoId || '')}"` : `data-act="subir-foto" data-id="${id}"`}>
+    <div class="hero" ${hero ? `data-act="foto-grande" data-foto-id="${h(hero.fotoId || '')}"` : `data-act="subir-foto" data-id="${h(id)}"`}>
       ${hero ? imgFoto(hero, 'loading="eager"') : '<span>📷 Añadir foto</span>'}
     </div>
     <div class="ficha-cab">
@@ -268,20 +272,20 @@ function vistaDetalle(id) {
       : `<button class="aprende-banda aviso" data-act="tab" data-tab="conocela" data-scroll="1"><span>❓</span><div><b>¿Qué planta es?</b><small>Dime su especie y te enseño a cuidarla.</small></div><span>›</span></button>`}
     ${p.archivada ? '' : `
     <div class="acciones-principales">
-      <button class="btn grande" data-act="cuidar" data-id="${id}" data-tipo="riego">💧 Regar hoy</button>
-      <button class="btn claro" data-act="posponer" data-id="${id}">⏳ Sigue húmeda</button>
+      <button class="btn grande" data-act="cuidar" data-id="${h(id)}" data-tipo="riego">💧 Regar hoy</button>
+      <button class="btn claro" data-act="posponer" data-id="${h(id)}">⏳ Sigue húmeda</button>
     </div>
     <div class="acciones-sec">
-      <button class="btn claro peq" data-act="cuidar" data-id="${id}" data-tipo="nutrir">🌿 Nutrir</button>
-      <button class="btn claro peq" data-act="cuidar" data-id="${id}" data-tipo="trasplante">🪴 Trasplantar</button>
-      <button class="btn claro peq" data-act="observar" data-id="${id}">📝 Observar</button>
-      <button class="btn claro peq" data-act="preguntar" data-id="${id}">💬 Pregúntale</button>
+      <button class="btn claro peq" data-act="cuidar" data-id="${h(id)}" data-tipo="nutrir">🌿 Nutrir</button>
+      <button class="btn claro peq" data-act="cuidar" data-id="${h(id)}" data-tipo="trasplante">🪴 Trasplantar</button>
+      <button class="btn claro peq" data-act="observar" data-id="${h(id)}">📝 Observar</button>
+      <button class="btn claro peq" data-act="preguntar" data-id="${h(id)}">💬 Pregúntale</button>
     </div>`}
     <section class="estados">${estados}</section>
     ${sellos ? `<div class="sellos">${sellos}</div>` : ''}
     <div class="tabs" id="tabs">${tabs}</div>
     <section class="tab-cuerpo">${cuerpo}</section>
-  `, 'home', { titulo: h(p.nombre), volver: true, extra: `<button class="btn-icono" data-act="ir" data-ruta="#/p/${id}/editar" aria-label="Editar">✏️</button>` });
+  `, 'home', { titulo: h(p.nombre), volver: true, extra: `<button class="btn-icono" data-act="ir" data-ruta="#/p/${h(id)}/editar" aria-label="Editar">✏️</button>` });
 }
 
 function fila(etq, valor) {
@@ -326,12 +330,12 @@ function tabCuidar(p) {
     <div class="tarjeta-bloque">
       <h3>Notas personales</h3>
       <textarea id="nota" rows="3" placeholder="Lo que quieras recordar de esta planta…">${h(p.NotaPersonal || '')}</textarea>
-      <button class="btn peq" data-act="guardar-nota" data-id="${p.id}">Guardar nota</button>
+      <button class="btn peq" data-act="guardar-nota" data-id="${h(p.id)}">Guardar nota</button>
     </div>
     <div class="pie-ficha">
       ${p.archivada
-        ? `<button class="btn claro" data-act="restaurar" data-id="${p.id}">↩️ Restaurar planta</button>`
-        : `<button class="btn claro peligro" data-act="archivar" data-id="${p.id}">📦 Archivar</button>`}
+        ? `<button class="btn claro" data-act="restaurar" data-id="${h(p.id)}">↩️ Restaurar planta</button>`
+        : `<button class="btn claro peligro" data-act="archivar" data-id="${h(p.id)}">📦 Archivar</button>`}
     </div>`;
 }
 
@@ -341,16 +345,16 @@ function tabConocela(p) {
     const cientifico = String(p['Nombre científico'] || '').trim();
     return `<div class="tarjeta-bloque"><h3>¿Qué planta es?</h3>
       <p>Elige su especie del catálogo y te cuento cómo cuidarla y por qué.</p>
-      <select id="elegir-especie"><option value="">— Elegir especie —</option>${A.listaEspecies().map((x) => `<option value="${x.id}">${h(x.nombres[0])} (${h(x.cientifico)})</option>`).join('')}</select>
-      <button class="btn peq" data-act="asignar-especie" data-id="${p.id}">Guardar</button>
+      <select id="elegir-especie"><option value="">— Elegir especie —</option>${A.listaEspecies().map((x) => `<option value="${h(x.id)}">${h(x.nombres[0])} (${h(x.cientifico)})</option>`).join('')}</select>
+      <button class="btn peq" data-act="asignar-especie" data-id="${h(p.id)}">Guardar</button>
       <h3>¿No está en la lista?</h3>
       ${cientifico
         ? `<p>Puedo crear la ficha de <i>${h(cientifico)}</i> con IA. Revísala después: es orientativa.</p>
-           <button class="btn peq claro" data-act="crear-ficha" data-id="${p.id}" data-nombre="${h(cientifico)}">✨ Crear ficha con IA</button>`
+           <button class="btn peq claro" data-act="crear-ficha" data-id="${h(p.id)}" data-nombre="${h(cientifico)}">✨ Crear ficha con IA</button>`
         : `<p>Ponle el nombre científico en ✏️ Editar (o identifícala con una foto al crearla) y podré crear su ficha.</p>`}
       </div>`;
   }
-  return bloqueEspecie(e) + `<p class="centro"><button class="btn claro peq" data-act="preguntar" data-id="${p.id}">💬 Pregúntale algo sobre ella</button></p>`;
+  return bloqueEspecie(e) + `<p class="centro"><button class="btn claro peq" data-act="preguntar" data-id="${h(p.id)}">💬 Pregúntale algo sobre ella</button></p>`;
 }
 
 function bloqueEspecie(e) {
@@ -371,7 +375,7 @@ function bloqueEspecie(e) {
       ${listaHtml('⚠️ Errores típicos', e.errores)}
       ${listaHtml('💡 Trucos', e.pistas)}
       ${parrafo('✨ Curiosidad', e.curiosidad)}
-      ${wiki ? `<h3>📚 Wikipedia</h3>${wiki.imagen ? `<img class="wiki-img" src="${h(wiki.imagen)}" alt="" loading="lazy">` : ''}<p>${h(wiki.texto)}</p><a href="${h(wiki.url)}" target="_blank" rel="noopener">Leer más en Wikipedia ↗</a>`
+      ${wiki ? `<h3>📚 Wikipedia</h3>${wiki.imagen ? `<img class="wiki-img" src="${h(wiki.imagen)}" alt="" loading="lazy">` : ''}<p>${h(wiki.texto)}</p><a href="${h(urlSegura(wiki.url))}" target="_blank" rel="noopener noreferrer">Leer más en Wikipedia ↗</a>`
         : wiki === null ? '<p class="nota">Cargando Wikipedia…</p>' : ''}
     </div>`;
 }
@@ -449,9 +453,9 @@ function tabFotos(p, { fotos }) {
   }
   return `
     <div class="acciones-sec">
-      <button class="btn peq" data-act="subir-foto" data-id="${p.id}">📷 Añadir foto</button>
-      <button class="btn claro peq" data-act="diagnosticar" data-id="${p.id}">🩺 ¿Cómo está de salud?</button>
-      ${fotos.length >= 2 ? `<button class="btn claro peq" data-act="comparar" data-id="${p.id}">↔️ ${ui.comparar?.id === p.id ? 'Cerrar comparación' : 'Comparar'}</button>` : ''}
+      <button class="btn peq" data-act="subir-foto" data-id="${h(p.id)}">📷 Añadir foto</button>
+      <button class="btn claro peq" data-act="diagnosticar" data-id="${h(p.id)}">🩺 ¿Cómo está de salud?</button>
+      ${fotos.length >= 2 ? `<button class="btn claro peq" data-act="comparar" data-id="${h(p.id)}">↔️ ${ui.comparar?.id === p.id ? 'Cerrar comparación' : 'Comparar'}</button>` : ''}
     </div>
     ${diag ? `<div class="tarjeta-bloque diag">${diag.cargando ? '<p>Analizando la foto…</p>' : diag.html}</div>` : ''}
     ${comparador}
@@ -471,7 +475,7 @@ const ORIGENES = ['', 'Comprada', 'Regalo', 'Donación', 'Esqueje o propagación
 const GRUPOS_FREQ = [['riego_cv', '💧 Riego primavera–verano', 'cv'], ['riego_oi', '💧 Riego otoño–invierno', 'oi'], ['nutrir', '🌿 Nutrir', 'nutrir'], ['trasplante', '🪴 Trasplante', 'trasplante']];
 
 function selectEspecie(actual) {
-  return `<select name="especieId" id="f-especie"><option value="">— No sé / otra —</option>${A.listaEspecies().map((e) => `<option value="${e.id}" ${actual === e.id ? 'selected' : ''}>${h(e.nombres[0])} — ${h(e.cientifico)}</option>`).join('')}</select>`;
+  return `<select name="especieId" id="f-especie"><option value="">— No sé / otra —</option>${A.listaEspecies().map((e) => `<option value="${h(e.id)}" ${actual === e.id ? 'selected' : ''}>${h(e.nombres[0])} — ${h(e.cientifico)}</option>`).join('')}</select>`;
 }
 
 function vistaNueva() {
@@ -516,7 +520,7 @@ function vistaEditar(id) {
   const cumple = p['Cumpleaños'] ? new Date(p['Cumpleaños']) : null;
 
   return marco(`
-    <form class="formulario" id="form-editar" data-id="${id}">
+    <form class="formulario" id="form-editar" data-id="${h(id)}">
       ${texto('Nombre Casa', 'Nombre en casa *')}
       <label>Especie ${selectEspecie(e?.id)}</label>
       ${texto('Nombre científico', 'Nombre científico')}
@@ -569,7 +573,7 @@ function vistaCalendario() {
   const fil = (p) => {
     const e = p.estado;
     const otros = ['nutrir', 'trasplante'].map((t) => `<span class="nivel-${e[t].nivel}">${C.EMOJI[t]} ${e[t].reposo ? '😴' : e[t].sinReferencia ? '?' : e[t].diasRestantes <= 0 ? 'ya' : e[t].diasRestantes + ' d'}</span>`).join(' ');
-    return `<li data-act="abrir" data-id="${p.id}"><div><b>${h(p.nombre)}</b><div class="sub">${otros}</div></div>
+    return `<li data-act="abrir" data-id="${h(p.id)}"><div><b>${h(p.nombre)}</b><div class="sub">${otros}</div></div>
       <div class="cal-der nivel-${e.riego.nivel}">${e.riego.proxima ? fecha(e.riego.proxima, { weekday: 'short', day: 'numeric' }) : '—'}<small>${C.textoEstado(e.riego)}</small></div></li>`;
   };
   const orden = (a, b) => (a.estado.riego.diasRestantes ?? -999) - (b.estado.riego.diasRestantes ?? -999);
@@ -586,8 +590,8 @@ function vistaArchivadas() {
   const { archivadas } = datos();
   const ic = { muerta: '💀', donada: '🎁' };
   return marco(`<ul class="lista">${archivadas.map((p) => `
-    <li data-act="abrir" data-id="${p.id}"><div><b>${h(p.nombre)}</b><div class="sub">${ic[p.MotivoArchivado] || '📦'} ${h(p.MotivoArchivado || '')} · ${fecha(p.FechaArchivado, { day: 'numeric', month: 'short', year: 'numeric' })}</div></div>
-    <button class="btn peq claro" data-act="restaurar" data-id="${p.id}">Restaurar</button></li>`).join('') || '<p class="vacio">No hay plantas archivadas.</p>'}</ul>`,
+    <li data-act="abrir" data-id="${h(p.id)}"><div><b>${h(p.nombre)}</b><div class="sub">${ic[p.MotivoArchivado] || '📦'} ${h(p.MotivoArchivado || '')} · ${fecha(p.FechaArchivado, { day: 'numeric', month: 'short', year: 'numeric' })}</div></div>
+    <button class="btn peq claro" data-act="restaurar" data-id="${h(p.id)}">Restaurar</button></li>`).join('') || '<p class="vacio">No hay plantas archivadas.</p>'}</ul>`,
   'cal', { titulo: 'Archivadas', volver: true });
 }
 
@@ -596,7 +600,7 @@ function vistaAprender() {
   const consejo = A.consejoTemporada();
   const mias = new Map();
   activas.forEach((p) => { if (p.especie) mias.set(p.especie.id, [...(mias.get(p.especie.id) || []), p.nombre]); });
-  const tarjetaEsp = (e) => `<li data-act="ir" data-ruta="#/especie/${e.id}"><div><b>${h(e.nombres[0])}</b><div class="sub"><i>${h(e.cientifico)}</i>${mias.has(e.id) ? ` · en casa: ${h(mias.get(e.id).join(', '))}` : ''}</div></div><span>›</span></li>`;
+  const tarjetaEsp = (e) => `<li data-act="ir" data-ruta="#/especie/${h(e.id)}"><div><b>${h(e.nombres[0])}</b><div class="sub"><i>${h(e.cientifico)}</i>${mias.has(e.id) ? ` · en casa: ${h(mias.get(e.id).join(', '))}` : ''}</div></div><span>›</span></li>`;
   const enCasa = A.listaEspecies().filter((e) => mias.has(e.id));
   const otras = A.listaEspecies().filter((e) => !mias.has(e.id));
   return marco(`
@@ -714,7 +718,7 @@ function modalQuien() {
 
 function modalPosponer(id) {
   modal(`<h2>⏳ Sigue húmeda</h2><p>No hace falta regar todavía. ¿Cuándo vuelvo a avisar?</p>
-    <div class="chips">${[1, 2, 3, 4, 5, 7].map((d) => `<button class="chip" data-act="posponer-dias" data-id="${id}" data-dias="${d}">${d} ${d === 1 ? 'día' : 'días'}</button>`).join('')}</div>
+    <div class="chips">${[1, 2, 3, 4, 5, 7].map((d) => `<button class="chip" data-act="posponer-dias" data-id="${h(id)}" data-dias="${d}">${d} ${d === 1 ? 'día' : 'días'}</button>`).join('')}</div>
     <p class="nota">💡 Comprobar la tierra antes de regar es el mejor hábito. Así aprendes el ritmo real de cada planta.</p>`);
 }
 
@@ -722,7 +726,7 @@ function modalObservar(id) {
   const rapidas = ['🌱 Hoja nueva', '🌸 Flor', '🟡 Hojas amarillas', '🟤 Puntas secas', '🐛 Plaga', '💧 Tierra encharcada', '🥀 Decaída'];
   modal(`<h2>📝 Observación</h2>
     <div class="chips">${rapidas.map((r) => `<button class="chip" data-act="obs-rapida" data-texto="${h(r)}">${r}</button>`).join('')}</div>
-    <form id="form-observar" class="formulario" data-id="${id}"><textarea name="detalle" rows="3" placeholder="¿Qué has visto?" required></textarea><button class="btn" type="submit">Guardar</button></form>`);
+    <form id="form-observar" class="formulario" data-id="${h(id)}"><textarea name="detalle" rows="3" placeholder="¿Qué has visto?" required></textarea><button class="btn" type="submit">Guardar</button></form>`);
 }
 
 /** Lo que sabemos de una planta, para Gemini y el diagnóstico. */
@@ -751,15 +755,15 @@ function modalPreguntar(id) {
   modal(`<h2>💬 Pregúntale</h2>
     <p class="nota">Responde una IA que conoce su especie y su historial. Es orientativo.</p>
     <div class="chips">${rapidas.map((r) => `<button class="chip" data-act="pregunta-rapida" data-texto="${h(r)}">${h(r)}</button>`).join('')}</div>
-    <form id="form-preguntar" class="formulario" data-id="${id}"><textarea name="pregunta" rows="3" maxlength="500" placeholder="Escribe tu pregunta…" required></textarea><button class="btn" type="submit">Preguntar</button></form>
+    <form id="form-preguntar" class="formulario" data-id="${h(id)}"><textarea name="pregunta" rows="3" maxlength="500" placeholder="Escribe tu pregunta…" required></textarea><button class="btn" type="submit">Preguntar</button></form>
     <div id="respuesta"></div>`);
 }
 
 function modalArchivar(id) {
   modal(`<h2>📦 Archivar planta</h2><p>Se guarda todo su historial. Puedes restaurarla cuando quieras.</p>
-    <div class="chips"><button class="chip" data-act="archivar-motivo" data-id="${id}" data-motivo="muerta">💀 Murió</button>
-    <button class="chip" data-act="archivar-motivo" data-id="${id}" data-motivo="donada">🎁 La regalé</button>
-    <button class="chip" data-act="archivar-motivo" data-id="${id}" data-motivo="otro">📦 Otro</button></div>`);
+    <div class="chips"><button class="chip" data-act="archivar-motivo" data-id="${h(id)}" data-motivo="muerta">💀 Murió</button>
+    <button class="chip" data-act="archivar-motivo" data-id="${h(id)}" data-motivo="donada">🎁 La regalé</button>
+    <button class="chip" data-act="archivar-motivo" data-id="${h(id)}" data-motivo="otro">📦 Otro</button></div>`);
 }
 
 // ---------------------------------------------------------------
@@ -958,6 +962,7 @@ document.addEventListener('submit', (ev) => {
   } else if (form.id === 'form-conexion') {
     const api = form.api.value.trim(), k = form.k.value.trim();
     if (!api || !k) return;
+    if (!urlApiValida(api)) return toast('La URL debe ser la de tu Apps Script: https://script.google.com/macros/s/…/exec');
     S.configurar({ api, k });
     ir('#/'); pintar();
     S.sincronizar().then(() => { const s = S.infoSync(); toast(s.estado === 'ok' ? '✅ Conectado' : '⚠️ ' + (s.error || 'No se pudo conectar')); });
@@ -1001,8 +1006,16 @@ export function pintar() {
     // Limpiar el hash ANTES de configurar: configurar() repinta y, si el hash
     // siguiera siendo #/conectar, volvería a entrar aquí sin fin.
     history.replaceState(null, '', location.pathname + '#/');
-    S.configurar({ api: query.get('api'), k: query.get('k') });
-    S.sincronizar();
+    const nueva = { api: query.get('api').trim(), k: query.get('k').trim() };
+    const actual = S.conf();
+    if (!urlApiValida(nueva.api)) {
+      toast('⚠️ Enlace no válido: no apunta a un Apps Script. No se ha cambiado nada.');
+    } else if (actual?.api === nueva.api && actual?.k === nueva.k) {
+      // Mismo enlace: nada que hacer.
+    } else if (!actual?.api || actual.demo || confirm('Este enlace cambia la hoja a la que está conectada la app. ¿Seguro? Ábrelo solo si te lo ha mandado alguien de casa.')) {
+      S.configurar(nueva);
+      S.sincronizar();
+    }
     return pintar();
   }
   if (!S.conf()) { app.innerHTML = vistaBienvenida(); return; }

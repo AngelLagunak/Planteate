@@ -3,6 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- CSP: solo scripts propios; datos solo a Apps Script y Wikipedia; fotos de Drive/Wikimedia. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob: data: https://lh3.googleusercontent.com https://*.wikimedia.org; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://es.wikipedia.org; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
   <title>Planteate</title>
   <meta name="description" content="Cuida tus plantas y aprende de ellas.">
   <meta name="theme-color" content="#3F5A34">

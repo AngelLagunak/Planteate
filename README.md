@@ -111,9 +111,35 @@ Se crean solas al usarlas: columnas `especieId`, `Ubicación` en Plantas;
 hoja `Especies` (fichas creadas con IA). Nuevos `tipoAccion`: `nutrir`,
 `observacion`.
 
+## Seguridad
+
+**Qué protege a la app**
+- **Token de acceso** (`API_TOKEN`, 128 bits): sin él la API no responde
+  datos. Va en el enlace de conexión (detrás de `#`, que el navegador no
+  envía a GitHub) y se guarda en el móvil.
+- **Enlaces de conexión**: solo se aceptan URLs de Apps Script, y si la app
+  ya está conectada pide confirmación antes de cambiar de hoja.
+- **CSP** en `index.html`: solo se ejecutan scripts propios y solo se
+  envían datos a Apps Script y Wikipedia.
+- **Escapado** de todo lo que se pinta (nombres, notas, ids, respuestas de
+  la IA).
+- **Backend**: valida ids, tipos de acción, nombres de columna y tamaños;
+  los textos que empiezan por `=` se guardan como texto, no como fórmula.
+- **Fotos privadas** en Drive; solo la API (con token) puede leerlas.
+- **Sin secretos en el repositorio**: todas las claves viven en las
+  Propiedades del script.
+
+**Lo que debes saber**
+- Quien tenga el enlace con token puede leer y escribir. Compártelo solo
+  en casa. Si se filtra: ejecuta `crearTokenApi`, vuelve a conectar y
+  genera un enlace nuevo desde Ajustes.
+- El nombre del tema de ntfy también es secreto: quien lo sepa lee los avisos.
+- Todas tus apps de GitHub Pages comparten el mismo origen
+  (`angellagunak.github.io`): una página de otro de tus repositorios podría
+  leer lo que Planteate guarda en el navegador (token y fotos). No publiques
+  en esa cuenta páginas con scripts de terceros que no controles.
+- Las fichas creadas con IA son orientativas: revísalas.
+
 ## Límites conocidos
 
 - Identificar, diagnosticar, Pregúntale y crear fichas necesitan red.
-- Las fichas creadas con IA son orientativas: revísalas.
-- Quien tenga el enlace con token puede escribir. Compártelo solo en casa.
-  Para cortar el acceso: ejecuta `crearTokenApi` otra vez y reconecta.

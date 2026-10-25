@@ -1,5 +1,5 @@
 // ============================================================
-// PLANTEATE — Planteate.gs: backend completo de la PWA (V5.1.1)
+// PLANTEATE — Planteate.gs: backend completo de la PWA (V5.1.2)
 // ============================================================
 // UN solo archivo. Sustituye a TODOS los .gs y .html de la V4 (y al
 // Api.gs de la 5.0): bórralos del proyecto y deja solo este.
@@ -24,7 +24,7 @@
 // Funciones para ejecutar a mano desde el editor (desplegable → ▶):
 //   crearTokenApi · activarAvisoDiario · enviarAvisoDiario · hacerFotosPrivadas
 
-const VERSION_API = '5.1.1';
+const VERSION_API = '5.1.2';
 const HOJAS = { plantas: 'Plantas', acciones: 'Acciones', fotos: 'Fotos', personas: 'Personas', especies: 'Especies' };
 const ZONA = 'Europe/Madrid';
 
@@ -144,6 +144,32 @@ function columna_(h, nombre) {
 function cabeceras_(h) { return h.getRange(1, 1, 1, h.getLastColumn()).getValues()[0]; }
 
 // ---------------------------------------------------------------
+// Seguridad de lo que se escribe en la hoja
+// ---------------------------------------------------------------
+const RE_ID = /^[A-Za-z0-9_-]{1,80}$/;
+const RE_COLUMNA = /^[\p{L}\p{N} ()\/\-_.,]{1,60}$/u;
+const TIPOS_ACCION = ['riego', 'nutrir', 'abono', 'fertilizante', 'trasplante', 'observacion', 'diagnostico', 'identificacion'];
+const MAX_TEXTO = 2000;
+
+function exigirId_(id, que) {
+  if (!RE_ID.test(String(id || ''))) throw new Error('VALIDACION: ' + que + ' no válido.');
+  return String(id);
+}
+
+/**
+ * Valor seguro para una celda: un texto que empieza por = + - @ se guardaría
+ * como FÓRMULA (y algunas, como IMPORTXML, pueden mandar datos fuera al abrir
+ * la hoja). Con un apóstrofo delante Sheets lo guarda como texto. Los números
+ * escritos como texto ("-5", "7") se dejan tal cual.
+ */
+function celda_(v) {
+  if (typeof v !== 'string') return v;
+  v = v.slice(0, MAX_TEXTO);
+  if (/^[=+\-@]/.test(v) && !/^[+-]?\d+([.,]\d+)?$/.test(v)) return "'" + v;
+  return v;
+}
+
+// ---------------------------------------------------------------
 // Lectura completa
 // ---------------------------------------------------------------
 function todo_() {
@@ -176,6 +202,7 @@ function especiesExtra_(ss) {
 //   {t:'planta', id, campos}         crea o actualiza
 //   {t:'persona', nombre}
 function lote_(ops) {
+  if (!Array.isArray(ops) || ops.length > 500) throw new Error('VALIDACION: lote demasiado grande.');
   if (ops.length) {
     const l = bloqueo_();
     try {
@@ -198,15 +225,25 @@ function anadirAcciones_(ss, acciones) {
   const iLog = cab.indexOf('logId');
   const existen = new Set();
   if (h.getLastRow() > 1) h.getRange(2, iLog + 1, h.getLastRow() - 1, 1).getValues().forEach((r) => existen.add(String(r[0])));
-  const filas = acciones.filter((a) => a.logId && !existen.has(String(a.logId))).map((a) => cab.map((c) => {
-    if (c === 'detalle') return String(a.detalle || '').slice(0, 500);
-    if (c === 'timestamp') return a.timestamp || new Date().toISOString();
-    return a[c] !== undefined && a[c] !== null ? a[c] : '';
+  acciones.forEach((a) => {
+    exigirId_(a.logId, 'logId');
+    exigirId_(a.plantaId, 'plantaId');
+    if (TIPOS_ACCION.indexOf(a.tipoAccion) === -1) throw new Error('VALIDACION: tipo de acción no válido.');
+    if (a.timestamp && isNaN(new Date(a.timestamp).getTime())) throw new Error('VALIDACION: fecha no válida.');
+  });
+  const permitidas = ['logId', 'plantaId', 'tipoAccion', 'timestamp', 'persona', 'detalle'];
+  const filas = acciones.filter((a) => !existen.has(String(a.logId))).map((a) => cab.map((c) => {
+    if (permitidas.indexOf(c) === -1) return '';
+    if (c === 'detalle') return celda_(String(a.detalle || '').slice(0, 500));
+    if (c === 'persona') return celda_(String(a.persona || '').slice(0, 40));
+    if (c === 'timestamp') return a.timestamp ? new Date(a.timestamp).toISOString() : new Date().toISOString();
+    return a[c] !== undefined && a[c] !== null ? celda_(String(a[c])) : '';
   }));
   if (filas.length) h.getRange(h.getLastRow() + 1, 1, filas.length, cab.length).setValues(filas);
 }
 
 function anularAcciones_(ss, logIds) {
+  logIds.forEach((id) => exigirId_(id, 'logId'));
   const h = ss.getSheetByName(HOJAS.acciones);
   if (!h || h.getLastRow() < 2) return;
   const quitar = new Set(logIds.map(String));
@@ -216,8 +253,9 @@ function anularAcciones_(ss, logIds) {
 }
 
 function registrarPersona_(ss, nombre) {
-  nombre = String(nombre || '').trim();
+  nombre = String(nombre || '').trim().slice(0, 40);
   if (!nombre) return;
+  nombre = celda_(nombre);
   const h = hoja_(ss, HOJAS.personas, CABECERAS.Personas);
   const ya = tabla_(h).some((f) => String(f.nombre || '').trim().toLowerCase() === nombre.toLowerCase());
   if (!ya) h.appendRow([nombre, new Date().toISOString()]);
@@ -260,6 +298,13 @@ function textoLegado_(c) {
 }
 
 function guardarPlanta_(ss, id, campos) {
+  exigirId_(id, 'id de planta');
+  Object.keys(campos).forEach((k) => {
+    if (!RE_COLUMNA.test(k) || k === 'id') throw new Error('VALIDACION: campo no válido: ' + String(k).slice(0, 30));
+    const v = campos[k];
+    if (v !== null && typeof v === 'object') throw new Error('VALIDACION: valor no válido en ' + k);
+    campos[k] = celda_(v === null || v === undefined ? '' : v);
+  });
   validarPlanta_(campos);
   campos = textoLegado_(campos);
   const h = hoja_(ss, HOJAS.plantas, CABECERAS.Plantas);
@@ -302,6 +347,8 @@ function carpetaPlanta_(plantaId) {
 }
 
 function subirFoto_(a) {
+  exigirId_(a.plantaId, 'plantaId');
+  if (a.fotoId) exigirId_(a.fotoId, 'fotoId');
   if (TIPOS_FOTO.indexOf(a.mime || 'image/jpeg') === -1) throw new Error('Formato de foto no permitido.');
   const bytes = Utilities.base64Decode(a.base64);
   if (bytes.length > 8 * 1024 * 1024) throw new Error('Foto demasiado grande.');
@@ -469,7 +516,9 @@ function gemini_(prompt, comoJson) {
     try { detalle = JSON.parse(r.getContentText()).error.message; } catch (e) { detalle = r.getContentText().slice(0, 200); }
     error = 'Gemini ' + codigo + ' (' + modelo + '): ' + detalle;
     console.warn(error);
-    if (codigo !== 404) break; // 400/403 = clave mal, 429 = cupo: probar otro modelo no ayuda
+    // 400/401/403 = clave o petición mal: otro modelo no lo arregla.
+    // 404 (modelo retirado), 429 (cupo, que es por modelo) y 5xx (saturado): probar el siguiente.
+    if (codigo === 400 || codigo === 401 || codigo === 403) break;
   }
   throw new Error(error);
 }
