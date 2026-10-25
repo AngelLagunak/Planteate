@@ -31,7 +31,9 @@ export function especieDe(planta) {
   const exacta = especies.find((e) => e.cientifico.toLowerCase() === nombre);
   if (exacta) return exacta;
   const genero = nombre.split(/\s+/)[0];
-  return especies.find((e) => e.genero.toLowerCase() === genero) || null;
+  // Sinónimos: nombres antiguos o alternativos (p. ej. Coleus = Plectranthus).
+  const porSinonimo = (e) => (e.sinonimos || []).some((s) => { s = s.toLowerCase(); return s === nombre || s.split(/\s+/)[0] === genero; });
+  return especies.find((e) => String(e.genero).toLowerCase() === genero) || especies.find(porSinonimo) || null;
 }
 
 // ---------------------------------------------------------------
@@ -51,7 +53,8 @@ export function porQue(c, especie) {
     return 'No hay ningún registro ni fecha de inicio, así que no se puede saber cuándo toca. Registra el próximo cuidado y el contador empezará.';
   }
   const hace = c.diasDesde === 0 ? 'hoy' : c.diasDesde === 1 ? 'ayer' : `hace ${c.diasDesde} días`;
-  partes.push(`Último: ${hace}${c.persona ? ` (${c.persona})` : ''}. Toca ${textoFrecuencia(f)}, ${FUENTE[f.fuente]}.`);
+  if (c.estimada) partes.push(`Aún no hay ningún registro de este cuidado, así que cuento desde su primer registro o su cumpleaños (${hace}). Cuando lo hagas, márcalo y el contador será exacto. Toca ${textoFrecuencia(f)}, ${FUENTE[f.fuente]}.`);
+  else partes.push(`Último: ${hace}${c.persona ? ` (${c.persona})` : ''}. Toca ${textoFrecuencia(f)}, ${FUENTE[f.fuente]}.`);
 
   if (c.tipo === 'riego') {
     const calida = esTemporadaCalida();

@@ -1,6 +1,6 @@
 // PLANTEATE 5.0 — service worker: la app abre sin red.
 // Sube VERSION en cada cambio para que los móviles cojan los archivos nuevos.
-const VERSION = 'pl5-v2';
+const VERSION = 'pl5-v3';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
   'js/app.js', 'js/store.js', 'js/cuidados.js', 'js/aprender.js', 'js/demo.js', 'js/idb.js',

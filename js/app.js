@@ -9,7 +9,7 @@ import * as S from './store.js';
 import * as C from './cuidados.js';
 import * as A from './aprender.js';
 
-export const VERSION = '5.1.0';
+export const VERSION = '5.1.1';
 const app = document.getElementById('app');
 const ui = { filtro: null, seleccion: null, tab: 'cuidar', grafico: 'riego', wikiCargando: {}, agrupar: localStorage.getItem('pl5_agrupar') === '1', comparar: null };
 
@@ -118,7 +118,7 @@ const porUrgencia = (a, b) => (PESO[a.estado.color] - PESO[b.estado.color]) || (
 function indicadorSync() {
   const s = S.infoSync();
   if (S.esDemo()) return `<button class="sync sync-demo" data-act="ir" data-ruta="#/ajustes">Modo prueba</button>`;
-  const txt = { ok: s.pendientes ? `${s.pendientes} por enviar` : 'Al día', enviando: 'Guardando…', error: 'Sin guardar', offline: s.pendientes ? `Sin red · ${s.pendientes} pendientes` : 'Sin red' }[s.estado];
+  const txt = { ok: s.pendientes ? `${s.pendientes} por enviar` : 'Al día', enviando: 'Guardando…', error: s.pendientes ? 'Sin guardar' : 'Sin actualizar', offline: s.pendientes ? `Sin red · ${s.pendientes} pendientes` : 'Sin red' }[s.estado];
   return `<button class="sync sync-${s.estado}" data-act="sync" title="${h(s.error || '')}"><span class="punto"></span>${txt}</button>`;
 }
 
@@ -998,8 +998,10 @@ export function pintar() {
   const { partes, query } = ruta();
 
   if (partes[0] === 'conectar' && query.get('api') && query.get('k')) {
-    S.configurar({ api: query.get('api'), k: query.get('k') });
+    // Limpiar el hash ANTES de configurar: configurar() repinta y, si el hash
+    // siguiera siendo #/conectar, volvería a entrar aquí sin fin.
     history.replaceState(null, '', location.pathname + '#/');
+    S.configurar({ api: query.get('api'), k: query.get('k') });
     S.sincronizar();
     return pintar();
   }

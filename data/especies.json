@@ -60,6 +60,7 @@
       "cientifico": "Plectranthus scutellarioides",
       "familia": "Lamiaceae",
       "genero": "Plectranthus",
+      "sinonimos": ["Coleus scutellarioides", "Solenostemon scutellarioides"],
       "nombres": ["Coleo", "Cretona"],
       "wiki": "Coleus scutellarioides",
       "riego": {
@@ -297,6 +298,89 @@
       "errores": ["Sol directo: hojas quemadas", "Dejar que se 'desmaye' muy a menudo: la debilita"],
       "pistas": ["Corta las flores marchitas desde la base del tallo.", "Más luz indirecta = más flores."],
       "curiosidad": "La 'flor' blanca no es una flor: es una hoja modificada (espata). Las flores de verdad son los puntitos del centro."
+    },
+    {
+      "id": "poto",
+      "cientifico": "Epipremnum aureum",
+      "familia": "Araceae",
+      "genero": "Epipremnum",
+      "sinonimos": ["Scindapsus aureus", "Pothos aureus"],
+      "nombres": ["Poto", "Potus", "Pothos"],
+      "wiki": "Epipremnum aureum",
+      "riego": {
+        "cv": { "min": 7, "max": 10, "unidad": "dia" },
+        "oi": { "min": 12, "max": 16, "unidad": "dia" },
+        "cantidad": "Moderada",
+        "metodo": "Por arriba; tira el agua del plato",
+        "comoSaber": "Riega cuando los 3–4 cm de arriba estén secos. Si las hojas se ablandan y cuelgan, tiene sed; si amarillean varias a la vez, sobra agua."
+      },
+      "nutrir": { "min": 1, "max": 1, "unidad": "mes", "tipo": "Equilibrado para hoja verde, a media dosis", "cuando": "Cada mes de primavera a final de verano" },
+      "trasplante": { "min": 1, "max": 2, "unidad": "año", "nota": "En primavera, cuando las raíces salgan por abajo" },
+      "luz": { "tipo": "Media a alta", "exposicion": "Indirecta; aguanta poca luz pero pierde el jaspeado", "horas": "6–8 h" },
+      "sustrato": "Universal aireado con un 20–30 % de perlita o corteza",
+      "temperatura": "18–27 °C · mínimo 12 °C",
+      "toxica": true,
+      "toxicidad": "Tóxica para perros y gatos (oxalatos de calcio)",
+      "origen": "Isla de Mo'orea, en la Polinesia Francesa. Hoy crece asilvestrado en bosques tropicales de medio mundo.",
+      "porQue": "En la selva trepa por los troncos hacia la luz: con poca luz sobrevive, pero crece lento y pierde las manchas amarillas. Sus raíces aéreas buscan apoyo y humedad.",
+      "errores": ["Regar 'por calendario' en invierno", "Ponerla en sol directo", "Maceta sin drenaje"],
+      "pistas": ["Si se ve 'pelada', poda las guías largas: rebrota más tupida.", "Un esqueje con un nudo enraíza en agua en 2–3 semanas.", "Con un tutor de musgo, las hojas crecen más grandes."],
+      "curiosidad": "En la naturaleza, sus hojas pueden medir más de medio metro. En maceta y colgando casi nunca pasan de la palma de la mano."
+    },
+    {
+      "id": "chamaedorea",
+      "cientifico": "Chamaedorea elegans",
+      "familia": "Arecaceae",
+      "genero": "Chamaedorea",
+      "sinonimos": ["Neanthe bella"],
+      "nombres": ["Palmera de salón", "Camedorea", "Palmera bambú"],
+      "wiki": "Chamaedorea elegans",
+      "riego": {
+        "cv": { "min": 5, "max": 8, "unidad": "dia" },
+        "oi": { "min": 10, "max": 14, "unidad": "dia" },
+        "cantidad": "Moderada",
+        "metodo": "Por arriba, con agua reposada o de lluvia",
+        "comoSaber": "La tierra debe estar algo húmeda, nunca encharcada. Riega cuando los 2–3 cm de arriba estén secos. Puntas marrones suelen ser aire seco o cal."
+      },
+      "nutrir": { "min": 1, "max": 1, "unidad": "mes", "tipo": "Abono para palmeras o equilibrado, a media dosis", "cuando": "Cada mes de primavera a verano" },
+      "trasplante": { "min": 2, "max": 3, "unidad": "año", "nota": "Solo cuando las raíces llenen la maceta: no le gusta que la molesten" },
+      "luz": { "tipo": "Media a baja", "exposicion": "Indirecta; el sol directo amarillea las hojas", "horas": "4–6 h" },
+      "sustrato": "Universal con turba, algo de arena o perlita y buen drenaje",
+      "temperatura": "18–27 °C · mínimo 12 °C",
+      "toxica": false,
+      "toxicidad": "No tóxica para perros y gatos",
+      "origen": "Selvas húmedas de montaña del sur de México y Guatemala.",
+      "porQue": "Crece bajo árboles altos, en sombra y con aire húmedo. Por eso tolera poca luz pero sufre con calefacción, sol directo y agua con mucha cal.",
+      "errores": ["Ponerla junto a la calefacción", "Agua del grifo muy calcárea", "Encharcar el plato"],
+      "pistas": ["Pulveriza las hojas en invierno o pon un plato con agua y piedras debajo.", "Corta las hojas secas a ras del tallo.", "Revisa el envés: la araña roja aparece con aire seco."],
+      "curiosidad": "Es de las palmeras de interior más vendidas del mundo desde la época victoriana, cuando adornaba los salones."
+    },
+    {
+      "id": "caladio",
+      "cientifico": "Caladium bicolor",
+      "familia": "Araceae",
+      "genero": "Caladium",
+      "nombres": ["Caladio", "Corazón de Jesús", "Oreja de elefante"],
+      "wiki": "Caladium bicolor",
+      "riego": {
+        "cv": { "min": 3, "max": 5, "unidad": "dia" },
+        "oi": { "min": 3, "max": 4, "unidad": "semana" },
+        "cantidad": "Moderada mientras tiene hojas; casi nada en reposo",
+        "metodo": "Por arriba, sin encharcar",
+        "comoSaber": "En primavera y verano, tierra siempre algo húmeda. Cuando en otoño las hojas se secan, es su reposo: deja el tubérculo casi seco hasta la primavera."
+      },
+      "nutrir": { "min": 2, "max": 3, "unidad": "semana", "tipo": "Equilibrado, a media dosis", "cuando": "Solo mientras tiene hojas (primavera y verano)" },
+      "trasplante": { "min": 1, "max": 1, "unidad": "año", "nota": "Replantar el tubérculo en primavera con tierra nueva" },
+      "luz": { "tipo": "Brillante filtrada", "exposicion": "Indirecta; el sol directo quema sus hojas finas", "horas": "6–8 h" },
+      "sustrato": "Ligero y rico: turba o coco, perlita y algo de humus",
+      "temperatura": "20–30 °C · sufre por debajo de 15 °C",
+      "toxica": true,
+      "toxicidad": "Tóxica para personas y mascotas (oxalatos de calcio)",
+      "origen": "Selvas de Sudamérica tropical (cuenca del Amazonas).",
+      "porQue": "Brota de un tubérculo con las lluvias y descansa en la época seca. En casa hace lo mismo: pierde las hojas en otoño. No está muerta, está dormida.",
+      "errores": ["Tirarla en otoño creyendo que ha muerto", "Regar en reposo: pudre el tubérculo", "Frío y corrientes"],
+      "pistas": ["En otoño, cuando caigan las hojas, guarda la maceta en un sitio templado y casi seca.", "En primavera vuelve a regar poco a poco hasta que brote.", "Le gusta la humedad ambiental: agrúpala con otras plantas."],
+      "curiosidad": "Sus colores no vienen de flores sino de las propias hojas: hay cientos de variedades con manchas rosas, rojas o blancas."
     }
   ]
 }

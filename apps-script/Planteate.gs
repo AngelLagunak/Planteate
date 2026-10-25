@@ -73,6 +73,13 @@ function json_(o) {
 
 function prop_(clave) { return PropertiesService.getScriptProperties().getProperty(clave); }
 
+/** Ejecutar a mano para ver si Gemini responde (y el motivo si no). */
+function probarGemini() {
+  const r = gemini_('Responde solo: "Gemini funciona".');
+  Logger.log(r === null ? 'Falta GEMINI_API_KEY' : r);
+  return r;
+}
+
 function crearTokenApi() {
   const token = Utilities.getUuid().replace(/-/g, '');
   PropertiesService.getScriptProperties().setProperty('API_TOKEN', token);
@@ -413,7 +420,7 @@ function diagnosticar_(a) {
       problemas.forEach((p) => lineas.push('   • ' + p.nombre + ' (' + Math.round(p.probabilidad * 100) + '%)'));
     } else lineas.push('🔍 La foto no muestra plagas ni enfermedades conocidas.');
 
-    const consejo = gemini_('Eres un experto en plantas de interior. Explica en español, cercano y práctico, en 3–5 frases, este diagnóstico ya calculado (no inventes hechos ni recomiendes productos químicos concretos). Planta: ' +
+    const consejo = geminiOpcional_('Eres un experto en plantas de interior. Explica en español, cercano y práctico, en 3–5 frases, este diagnóstico ya calculado (no inventes hechos ni recomiendes productos químicos concretos). Planta: ' +
       (ctx.nombrePlanta || '') + ' (' + (ctx.especie || 'especie desconocida') + ').\n' + lineas.join('\n'));
     if (consejo) lineas.push('', '🤖 ' + consejo);
 
@@ -433,19 +440,43 @@ function registrarEvento_(plantaId, tipo, detalle) {
 // ---------------------------------------------------------------
 // Gemini (opcional, capa gratuita)
 // ---------------------------------------------------------------
+/**
+ * Llama a Gemini. Sin clave devuelve null. Si falla, lanza un error con el
+ * motivo real (para verlo en la app). Si el modelo ya no existe (404), prueba
+ * el siguiente de la lista: Google retira modelos con el tiempo.
+ */
 function gemini_(prompt, comoJson) {
   const key = prop_('GEMINI_API_KEY');
   if (!key) return null;
-  const modelo = prop_('GEMINI_MODEL') || 'gemini-2.5-flash';
+  const modelos = [prop_('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'].filter(Boolean);
   const cuerpo = { contents: [{ parts: [{ text: prompt }] }] };
   if (comoJson) cuerpo.generationConfig = { responseMimeType: 'application/json' };
-  const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent', {
-    method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: JSON.stringify(cuerpo), muteHttpExceptions: true
-  });
-  if (r.getResponseCode() >= 300) { console.warn('Gemini ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 300)); return null; }
-  const d = JSON.parse(r.getContentText());
-  const t = d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts && d.candidates[0].content.parts[0].text;
-  return t ? t.trim() : null;
+
+  let error = null;
+  for (const modelo of modelos) {
+    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent', {
+      method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: JSON.stringify(cuerpo), muteHttpExceptions: true
+    });
+    const codigo = r.getResponseCode();
+    if (codigo < 300) {
+      const d = JSON.parse(r.getContentText());
+      const t = d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts && d.candidates[0].content.parts[0].text;
+      if (t) return t.trim();
+      error = 'Gemini (' + modelo + ') no devolvió texto.';
+      continue;
+    }
+    let detalle = '';
+    try { detalle = JSON.parse(r.getContentText()).error.message; } catch (e) { detalle = r.getContentText().slice(0, 200); }
+    error = 'Gemini ' + codigo + ' (' + modelo + '): ' + detalle;
+    console.warn(error);
+    if (codigo !== 404) break; // 400/403 = clave mal, 429 = cupo: probar otro modelo no ayuda
+  }
+  throw new Error(error);
+}
+
+/** Igual que gemini_ pero sin romper: para extras opcionales (consejo del diagnóstico). */
+function geminiOpcional_(prompt) {
+  try { return gemini_(prompt); } catch (e) { return null; }
 }
 
 function exigirGemini_() {
@@ -575,7 +606,9 @@ function especieDe_(p, especies) {
   if (p.especieId) { const e = especies.filter((x) => x.id === p.especieId)[0]; if (e) return e; }
   const n = String(p['Nombre científico'] || '').trim().toLowerCase();
   if (!n) return null;
-  return especies.filter((x) => String(x.cientifico).toLowerCase() === n)[0] || especies.filter((x) => String(x.genero).toLowerCase() === n.split(/\s+/)[0])[0] || null;
+  const genero = n.split(/\s+/)[0];
+  const sinonimo = (x) => (x.sinonimos || []).some((s) => { s = String(s).toLowerCase(); return s === n || s.split(/\s+/)[0] === genero; });
+  return especies.filter((x) => String(x.cientifico).toLowerCase() === n)[0] || especies.filter((x) => String(x.genero).toLowerCase() === genero)[0] || especies.filter(sinonimo)[0] || null;
 }
 
 function esCalida_(f) { const m = Number(Utilities.formatDate(f, ZONA, 'M')); return m >= 3 && m <= 8; }

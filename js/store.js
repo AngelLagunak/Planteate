@@ -198,7 +198,7 @@ export function sincronizar() {
   estado.sync = 'enviando';
   avisar();
 
-  enCurso = api('lote', { ops: enviadas })
+  enCurso = api('lote', { ops: enviadas }, 45000)
     .then((data) => {
       estado.snap = data;
       estado.cola = estado.cola.slice(enviadas.length);
@@ -217,8 +217,8 @@ export function sincronizar() {
         // Un dato inválido bloquearía la cola para siempre: se descarta ese lote.
         estado.cola = estado.cola.slice(enviadas.length);
         guardar(K.cola, estado.cola);
-      } else if (estado.cola.length) {
-        programarEnvio(30000);
+      } else {
+        programarEnvio(estado.cola.length ? 30000 : 20000); // reintento automático
       }
     })
     .finally(() => {
@@ -248,6 +248,17 @@ idb.todos('pendientes').then((lista) => {
   subirPendientes();
 }).catch((e) => console.warn('IndexedDB:', e));
 
+// Apps Script se atasca si recibe muchas peticiones a la vez: fotos de 2 en 2.
+const MAX_FOTOS_A_LA_VEZ = 2;
+let fotosEnCurso = 0;
+const esperando = [];
+async function enTurno(fn) {
+  if (fotosEnCurso >= MAX_FOTOS_A_LA_VEZ) await new Promise((r) => esperando.push(r));
+  fotosEnCurso++;
+  try { return await fn(); }
+  finally { fotosEnCurso--; esperando.shift()?.(); }
+}
+
 const aBlob = (base64, mime) => new Blob([Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))], { type: mime });
 
 /** URL lista para <img>. Fotos antiguas con url pública se usan tal cual. */
@@ -260,7 +271,7 @@ export async function urlFoto(foto) {
     if (p) blob = aBlob(p.base64, p.mime);
   }
   if (!blob && !esDemo()) {
-    const r = await api('foto', { fotoId: foto.fotoId }, 60000);
+    const r = await enTurno(() => api('foto', { fotoId: foto.fotoId }, 60000));
     blob = aBlob(r.base64, r.mime);
     await idb.guardar('fotos', foto.fotoId, blob);
   }

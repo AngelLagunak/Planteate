@@ -175,26 +175,42 @@ export function nivel(diasPasados, freq) {
  * Estado de los 3 cuidados de una planta.
  * accionesPlanta: {riego:[], nutrir:[], trasplante:[]} con filas crudas.
  */
+/** Fecha más antigua de cualquier cuidado de la planta, o su cumpleaños. */
+function referenciaAlternativa(planta, accionesPlanta, inicioGlobal) {
+  if (inicioGlobal) return new Date(inicioGlobal);
+  let primera = null;
+  for (const t of TIPOS) for (const a of accionesPlanta?.[t] || []) {
+    const f = new Date(a.timestamp);
+    if (!isNaN(f) && (!primera || f < primera)) primera = f;
+  }
+  const cumple = planta['Cumpleaños'] ? new Date(planta['Cumpleaños']) : null;
+  if (cumple && !isNaN(cumple) && (!primera || cumple < primera)) return cumple;
+  return primera;
+}
+
 export function estadoPlanta(planta, especie, accionesPlanta, inicioGlobal, ahora = new Date()) {
   const res = {};
   const pospuesto = planta.RiegoPospuestoHasta ? new Date(planta.RiegoPospuestoHasta) : null;
+  const alternativa = referenciaAlternativa(planta, accionesPlanta, inicioGlobal);
 
   for (const tipo of TIPOS) {
     const f = frecuencia(planta, especie, tipo, ahora);
     const ultimo = ultimoDe(accionesPlanta?.[tipo]);
-    const ref = ultimo?.fecha || (inicioGlobal ? new Date(inicioGlobal) : null);
+    // Sin registros de este cuidado: se cuenta desde el primer registro de la planta o su cumpleaños.
+    const ref = ultimo?.fecha || alternativa;
+    // Sep–feb casi ninguna planta de interior se abona: no avisar.
+    const reposo = tipo === 'nutrir' && !esTemporadaCalida(ahora);
 
     if (!ref) {
-      res[tipo] = { tipo, nivel: 'rojo', sinReferencia: true, freq: f, diasDesde: null, diasRestantes: null, persona: null };
+      res[tipo] = { tipo, reposo, nivel: reposo ? 'verde' : 'rojo', sinReferencia: true, freq: f, diasDesde: null, diasRestantes: null, persona: null };
       continue;
     }
     const pasados = diasEntre(ref, ahora);
     const estaPospuesto = tipo === 'riego' && pospuesto && ahora < pospuesto;
-    // Sep–feb casi ninguna planta de interior se abona: no avisar.
-    const reposo = tipo === 'nutrir' && !esTemporadaCalida(ahora);
     res[tipo] = {
       tipo,
       reposo,
+      estimada: !ultimo,
       nivel: estaPospuesto || reposo ? 'verde' : nivel(pasados, f.dias),
       sinReferencia: false,
       freq: f,
@@ -214,8 +230,8 @@ export function estadoPlanta(planta, especie, accionesPlanta, inicioGlobal, ahor
 
 export function textoEstado(c) {
   if (!c) return '';
-  if (c.sinReferencia) return '⚠️ Sin fecha de referencia';
   if (c.reposo) return '😴 En reposo hasta marzo';
+  if (c.sinReferencia) return '⚠️ Sin fecha de referencia';
   if (c.pospuestoHasta) return `⏳ Pospuesto hasta el ${c.pospuestoHasta.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`;
   if (c.diasRestantes < 0) return `${ETIQUETA[c.tipo]} atrasado ${-c.diasRestantes} d`;
   if (c.diasRestantes === 0) return `${VERBO[c.tipo]} hoy`;
