@@ -1,5 +1,5 @@
 // ============================================================
-// PLANTEATE — Planteate.gs: backend completo de la PWA (V5.1)
+// PLANTEATE — Planteate.gs: backend completo de la PWA (V5.1.1)
 // ============================================================
 // UN solo archivo. Sustituye a TODOS los .gs y .html de la V4 (y al
 // Api.gs de la 5.0): bórralos del proyecto y deja solo este.
@@ -24,7 +24,7 @@
 // Funciones para ejecutar a mano desde el editor (desplegable → ▶):
 //   crearTokenApi · activarAvisoDiario · enviarAvisoDiario · hacerFotosPrivadas
 
-const VERSION_API = '5.1';
+const VERSION_API = '5.1.1';
 const HOJAS = { plantas: 'Plantas', acciones: 'Acciones', fotos: 'Fotos', personas: 'Personas', especies: 'Especies' };
 const ZONA = 'Europe/Madrid';
 
