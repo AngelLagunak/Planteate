@@ -1,5 +1,5 @@
 // ============================================================
-// PLANTEATE — Planteate.gs: backend completo de la PWA (V5.1.2)
+// PLANTEATE — Planteate.gs: backend completo de la PWA (V5.2.0)
 // ============================================================
 // UN solo archivo. Sustituye a TODOS los .gs y .html de la V4 (y al
 // Api.gs de la 5.0): bórralos del proyecto y deja solo este.
@@ -14,17 +14,17 @@
 //   FOLDER_ID          carpeta de fotos en Drive (ya existe de la V4)
 //   PLANTNET_API_KEY   identificar y diagnosticar por foto
 //   GEMINI_API_KEY     opcional: fichas nuevas, preguntas, consejos
-//   GEMINI_MODEL       opcional, por defecto gemini-2.5-flash
+//   GEMINI_MODEL       opcional, por defecto gemini-flash-latest (y Flash-Lite de reserva)
+//   GROQ_API_KEY       opcional: IA de reserva gratis si Gemini no tiene cupo (console.groq.com)
 //   APP_URL            URL de la PWA (para leer el catálogo de especies en el aviso diario)
-//   Avisos al móvil (cualquiera de estos, o varios):
-//     NTFY_TOPIC                         app ntfy (gratis, sin cuenta)
+//   Avisos extra por mensaje (opcionales; la app ya avisa con sus notificaciones):
 //     TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID   bot de Telegram
 //     CALLMEBOT_PHONE + CALLMEBOT_APIKEY      WhatsApp vía CallMeBot (servicio no oficial)
 //
 // Funciones para ejecutar a mano desde el editor (desplegable → ▶):
 //   crearTokenApi · activarAvisoDiario · enviarAvisoDiario · hacerFotosPrivadas
 
-const VERSION_API = '5.1.2';
+const VERSION_API = '5.2.0';
 const HOJAS = { plantas: 'Plantas', acciones: 'Acciones', fotos: 'Fotos', personas: 'Personas', especies: 'Especies' };
 const ZONA = 'Europe/Madrid';
 
@@ -443,10 +443,25 @@ function identificar_(base64, mime) {
       familia: r.species && r.species.family && r.species.family.scientificNameWithoutAuthor,
       confianza: r.score
     })).filter((c) => c.nombreCientifico);
+    // Pl@ntNet duda (menos del 50 %): pedir una segunda opinión a Gemini mirando la foto.
+    if (!candidatos.length || candidatos[0].confianza < 0.5) {
+      const ia = segundaOpinion_(base64, mime);
+      if (ia && !candidatos.some((c) => c.nombreCientifico.toLowerCase() === ia.nombreCientifico.toLowerCase())) candidatos.unshift(ia);
+      else if (ia) candidatos.forEach((c) => { if (c.nombreCientifico.toLowerCase() === ia.nombreCientifico.toLowerCase()) c.nombreComunSugerido = (c.nombreComunSugerido || '') + ' · ✨ IA coincide'; });
+    }
     return candidatos.length ? { ok: true, candidatos: candidatos } : { ok: false, motivo: 'No se reconoce ninguna especie con confianza. Prueba otra foto o escríbela a mano.' };
   } catch (e) {
     return { ok: false, motivo: String(e.message || e) };
   }
+}
+
+function segundaOpinion_(base64, mime) {
+  try {
+    const t = gemini_('Identifica la especie de esta planta de interior o de jardín. Devuelve SOLO JSON: {"nombreCientifico":"Género especie","nombreComun":"nombre común en España"}. Si no lo sabes, nombreCientifico vacío.', true, { base64: base64, mime: mime });
+    const d = t && JSON.parse(t.replace(/^```json|```$/g, ''));
+    const n = d && String(d.nombreCientifico || '').trim();
+    return n && /^[A-Z][a-z]+( [a-z×-]+)*$/.test(n) ? { nombreCientifico: n, nombreComunSugerido: '✨ IA: ' + String(d.nombreComun || '').slice(0, 60), confianza: null } : null;
+  } catch (e) { console.warn('Segunda opinión: ' + e); return null; }
 }
 
 /** contexto lo calcula la app: {nombrePlanta, especie, estacion, riego:{nivel,diasDesde,freqDias,sinReferencia}} */
@@ -492,11 +507,15 @@ function registrarEvento_(plantaId, tipo, detalle) {
  * motivo real (para verlo en la app). Si el modelo ya no existe (404), prueba
  * el siguiente de la lista: Google retira modelos con el tiempo.
  */
-function gemini_(prompt, comoJson) {
+function gemini_(prompt, comoJson, imagen) {
   const key = prop_('GEMINI_API_KEY');
-  if (!key) return null;
-  const modelos = [prop_('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'].filter(Boolean);
-  const cuerpo = { contents: [{ parts: [{ text: prompt }] }] };
+  if (!key) return imagen ? null : groq_(prompt, comoJson);
+  // Flash-Lite tiene más cupo diario gratis: va de segunda opción.
+  const modelos = [prop_('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'].filter(Boolean)
+    .filter((m, i, a) => a.indexOf(m) === i);
+  const partes = [{ text: prompt }];
+  if (imagen) partes.push({ inline_data: { mime_type: imagen.mime || 'image/jpeg', data: imagen.base64 } });
+  const cuerpo = { contents: [{ parts: partes }] };
   if (comoJson) cuerpo.generationConfig = { responseMimeType: 'application/json' };
 
   let error = null;
@@ -520,7 +539,26 @@ function gemini_(prompt, comoJson) {
     // 404 (modelo retirado), 429 (cupo, que es por modelo) y 5xx (saturado): probar el siguiente.
     if (codigo === 400 || codigo === 401 || codigo === 403) break;
   }
+  // Reserva gratuita: Groq (si hay GROQ_API_KEY). Solo texto.
+  if (!imagen && prop_('GROQ_API_KEY')) {
+    try { return groq_(prompt, comoJson); } catch (e) { error += ' · ' + e.message; }
+  }
   throw new Error(error);
+}
+
+/** Groq (console.groq.com, gratis): IA de reserva cuando Gemini no tiene cupo. */
+function groq_(prompt, comoJson) {
+  const key = prop_('GROQ_API_KEY');
+  if (!key) return null;
+  const cuerpo = { model: prop_('GROQ_MODEL') || 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }] };
+  if (comoJson) cuerpo.response_format = { type: 'json_object' };
+  const r = UrlFetchApp.fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + key }, payload: JSON.stringify(cuerpo), muteHttpExceptions: true
+  });
+  if (r.getResponseCode() >= 300) throw new Error('Groq ' + r.getResponseCode());
+  const t = JSON.parse(r.getContentText()).choices[0].message.content;
+  if (!t) throw new Error('Groq no devolvió texto.');
+  return t.trim();
 }
 
 /** Igual que gemini_ pero sin romper: para extras opcionales (consejo del diagnóstico). */
@@ -529,7 +567,7 @@ function geminiOpcional_(prompt) {
 }
 
 function exigirGemini_() {
-  if (!prop_('GEMINI_API_KEY')) throw new Error('Falta GEMINI_API_KEY en Script Properties (gratis en aistudio.google.com/apikey).');
+  if (!prop_('GEMINI_API_KEY') && !prop_('GROQ_API_KEY')) throw new Error('Falta GEMINI_API_KEY en Script Properties (gratis en aistudio.google.com/apikey).');
 }
 
 /** Pregunta libre sobre una planta, con su contexto. */
@@ -570,16 +608,15 @@ function fichaEspecie_(nombreCientifico) {
 // ---------------------------------------------------------------
 function estadoAvisos_() {
   const canales = [];
-  if (prop_('NTFY_TOPIC')) canales.push('ntfy');
   if (prop_('TELEGRAM_BOT_TOKEN') && prop_('TELEGRAM_CHAT_ID')) canales.push('Telegram');
   if (prop_('CALLMEBOT_PHONE') && prop_('CALLMEBOT_APIKEY')) canales.push('WhatsApp');
   const activo = ScriptApp.getProjectTriggers().some((t) => t.getHandlerFunction() === 'enviarAvisoDiario');
-  return { canales: canales, programado: activo, ntfyTopic: prop_('NTFY_TOPIC') || null, gemini: !!prop_('GEMINI_API_KEY') };
+  return { canales: canales, programado: activo, gemini: !!(prop_('GEMINI_API_KEY') || prop_('GROQ_API_KEY')) };
 }
 
 function probarAviso_() {
   const enviados = enviar_('🌱 Planteate', 'Aviso de prueba: si lees esto, los avisos funcionan.');
-  if (!enviados) throw new Error('No hay ningún canal configurado (NTFY_TOPIC, Telegram o CallMeBot).');
+  if (!enviados) throw new Error('No hay ningún canal configurado (Telegram o CallMeBot).');
   return { enviados: enviados };
 }
 
@@ -602,12 +639,6 @@ function enviarAvisoDiario() {
 function enviar_(titulo, texto, url) {
   let n = 0;
   const intentar = (nombre, fn) => { try { fn(); n++; } catch (e) { console.warn('Aviso ' + nombre + ': ' + e); } };
-  const topic = prop_('NTFY_TOPIC');
-  if (topic) intentar('ntfy', () => UrlFetchApp.fetch('https://ntfy.sh/' + encodeURIComponent(topic), {
-    method: 'post', payload: Utilities.newBlob(texto).getBytes(),
-    // Título con tildes/emoji: codificado RFC 2047, que ntfy entiende.
-    headers: Object.assign({ Title: '=?UTF-8?B?' + Utilities.base64Encode(titulo, Utilities.Charset.UTF_8) + '?=', Tags: 'seedling' }, url ? { Click: url } : {})
-  }));
   const tg = prop_('TELEGRAM_BOT_TOKEN'), chat = prop_('TELEGRAM_CHAT_ID');
   if (tg && chat) intentar('Telegram', () => UrlFetchApp.fetch('https://api.telegram.org/bot' + tg + '/sendMessage', {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chat, text: titulo + '\n\n' + texto })

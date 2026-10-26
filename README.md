@@ -19,7 +19,7 @@ Móvil (PWA instalada)                       Google
 │ data/especies.json catálogo  │            │  Fotos, Personas, Especies │
 │ sw.js        abre sin red    │            │ Drive: fotos (privadas)    │
 └──────────────────────────────┘            └────────────────────────────┘
-                                   avisos → ntfy / Telegram / WhatsApp
+                                   avisos → notificaciones de la app (+ Telegram / WhatsApp opcional)
 ```
 
 - **Local primero**: regar, posponer, editar… cambia la pantalla al
@@ -52,7 +52,10 @@ Móvil (PWA instalada)                       Google
 5. En **Configuración del proyecto → Propiedades del script**, revisa:
    - `API_TOKEN`, `SPREADSHEET_ID`, `FOLDER_ID`, `PLANTNET_API_KEY` (ya existen).
    - `GEMINI_API_KEY`: gratis en https://aistudio.google.com/apikey
-     (para crear fichas, Pregúntale y consejos del diagnóstico).
+     (para crear fichas, Pregúntale, consejos del diagnóstico y segunda
+     opinión al identificar).
+   - `GROQ_API_KEY` (opcional): gratis en https://console.groq.com/keys.
+     Se usa solo si Gemini se queda sin cupo ese día.
    - `APP_URL` = `https://angellagunak.github.io/Planteate/`
 6. Ejecuta **una vez** `hacerFotosPrivadas` para quitar el acceso público
    a las fotos.
@@ -60,15 +63,15 @@ Móvil (PWA instalada)                       Google
 La primera vez que ejecutes funciones nuevas, Google pedirá permisos otra
 vez (Drive, enviar a servicios externos, activadores). Acéptalos.
 
-### 2. Avisos al móvil (gratis, sin correo)
-Elige uno o varios. Se configuran en **Propiedades del script**.
+### 2. Avisos de riego
+La propia app avisa con **notificaciones**: en la app, **Ajustes → Avisos
+de riego → Activar avisos** y acepta el permiso. Avisa una vez al día (a
+partir de las 9:00) si alguna planta necesita agua: al abrir la app y, con
+la app instalada en Android, también en segundo plano (el móvil decide
+cuándo; en ColorOS/OPPO conviene quitar la "optimización de batería" a
+Chrome o a Planteate).
 
-**ntfy (recomendado: el más fácil)**
-1. Instala la app **ntfy** (Android/iPhone).
-2. Inventa un nombre de tema difícil de adivinar, p. ej. `planteate-casa-7f3k9`.
-3. En la app ntfy: **+ → Suscribirse** a ese tema.
-4. Propiedad `NTFY_TOPIC` = ese nombre.
-   Todos los de casa pueden suscribirse al mismo tema.
+Opcional, avisos por mensaje desde el servidor (en **Propiedades del script**):
 
 **Telegram**
 1. En Telegram habla con **@BotFather** → `/newbot` → copia el token.
@@ -85,7 +88,6 @@ Elige uno o varios. Se configuran en **Propiedades del script**.
 
 Después:
 - Ejecuta **una vez** `activarAvisoDiario` (aviso cada día a las 9:00).
-- En la app: **Ajustes → Avisos al móvil → Enviar aviso de prueba**.
 
 ### 3. Conectar la app
 Abre la app, pega la URL `/exec` y el token. Para el resto de la casa:
@@ -133,7 +135,6 @@ hoja `Especies` (fichas creadas con IA). Nuevos `tipoAccion`: `nutrir`,
 - Quien tenga el enlace con token puede leer y escribir. Compártelo solo
   en casa. Si se filtra: ejecuta `crearTokenApi`, vuelve a conectar y
   genera un enlace nuevo desde Ajustes.
-- El nombre del tema de ntfy también es secreto: quien lo sepa lee los avisos.
 - Todas tus apps de GitHub Pages comparten el mismo origen
   (`angellagunak.github.io`): una página de otro de tus repositorios podría
   leer lo que Planteate guarda en el navegador (token y fotos). No publiques

@@ -58,7 +58,7 @@
     test('nivel verde / amarillo / rojo', () => { igual(C.nivel(1, 9), 'verde'); igual(C.nivel(6, 9), 'amarillo'); igual(C.nivel(10, 9), 'rojo'); });
 
     // --- Estado completo
-    const acc = (tipo, dias, desde, persona = 'Ana') => ({ logId: Math.random(), plantaId: 'p', tipoAccion: tipo, timestamp: hace(dias, desde), persona });
+    const acc = (tipo, dias, desde, persona = 'Persona 1') => ({ logId: Math.random(), plantaId: 'p', tipoAccion: tipo, timestamp: hace(dias, desde), persona });
     test('riego atrasado en verano', () => {
       const e = C.estadoPlanta({}, especie, { riego: [acc('riego', 8, JULIO)], nutrir: [], trasplante: [] }, null, JULIO);
       igual([e.riego.nivel, e.riego.diasRestantes, e.color], ['rojo', -3, 'rojo']);

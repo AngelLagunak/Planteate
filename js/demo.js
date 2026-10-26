@@ -11,13 +11,13 @@ const plantas = [
 
 const acciones = [];
 let n = 0;
-const add = (plantaId, tipoAccion, dias, persona = 'Ángel') => acciones.push({ logId: 'demo_' + (n++), plantaId, tipoAccion, timestamp: hace(dias), persona });
+const add = (plantaId, tipoAccion, dias, persona = 'Persona 1') => acciones.push({ logId: 'demo_' + (n++), plantaId, tipoAccion, timestamp: hace(dias), persona });
 [60, 38, 20].forEach((d) => add('demo_zz', 'riego', d));
-[40, 33, 27, 22, 16, 11, 6].forEach((d, i) => add('demo_espa', 'riego', d, i % 2 ? 'Ana' : 'Ángel'));
+[40, 33, 27, 22, 16, 11, 6].forEach((d, i) => add('demo_espa', 'riego', d, i % 2 ? 'Persona 2' : 'Persona 1'));
 add('demo_espa', 'abono', 45);
-[9, 7, 5, 3].forEach((d) => add('demo_alba', 'riego', d, 'Ana'));
+[9, 7, 5, 3].forEach((d) => add('demo_alba', 'riego', d, 'Persona 2'));
 [30, 18].forEach((d) => add('demo_cinta', 'riego', d));
 add('demo_cinta', 'fertilizante', 70);
 ['demo_zz', 'demo_espa', 'demo_alba', 'demo_cinta'].forEach((id) => ['riego', 'nutrir', 'trasplante'].forEach((t) => add(id, t, 90, 'Inicio Frecuencia')));
 
-export const DEMO = { plantas, acciones, fotos: [], personas: ['Ana', 'Ángel'], inicioGlobal: null, servidor: new Date().toISOString() };
+export const DEMO = { plantas, acciones, fotos: [], personas: ['Persona 2', 'Persona 1'], inicioGlobal: null, servidor: new Date().toISOString() };

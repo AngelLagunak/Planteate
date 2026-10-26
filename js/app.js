@@ -8,8 +8,9 @@
 import * as S from './store.js';
 import * as C from './cuidados.js';
 import * as A from './aprender.js';
+import * as Av from './avisos.js';
 
-export const VERSION = '5.1.2';
+export const VERSION = '5.2.0';
 const app = document.getElementById('app');
 const ui = { filtro: null, seleccion: null, tab: 'cuidar', grafico: 'riego', wikiCargando: {}, agrupar: localStorage.getItem('pl5_agrupar') === '1', comparar: null };
 
@@ -44,6 +45,7 @@ function imgFoto(f, attrs = '') {
 }
 
 let fotosIndex = new Map();
+let instalable = null; // evento beforeinstallprompt de Chrome
 function cargarFotos() {
   document.querySelectorAll('img[data-foto]:not([src])').forEach((img) => {
     const f = fotosIndex.get(img.dataset.foto);
@@ -77,12 +79,12 @@ async function comprimirFoto(file, lado = 1280) {
   return { base64: dataUrl.split(',')[1], mime: 'image/jpeg', dataUrl };
 }
 
-function pedirFoto({ camara = true } = {}) {
+// Sin "capture": así Android deja elegir entre cámara y galería.
+function pedirFoto() {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    if (camara) input.capture = 'environment';
     input.onchange = () => resolve(input.files[0] || null);
     input.click();
   });
@@ -658,7 +660,7 @@ function vistaAjustes() {
       ${c.api ? `<button class="btn peq claro" data-act="compartir">🔗 Copiar enlace para otra persona</button>` : ''}
     </div>
     ${S.esDemo() || !c.api ? '' : `<div class="tarjeta-bloque">
-      <h3>🔔 Avisos al móvil</h3>
+      <h3>🔔 Avisos de riego</h3>
       ${bloqueAvisos()}
     </div>`}
     <div class="tarjeta-bloque">
@@ -669,26 +671,22 @@ function vistaAjustes() {
     </div>
     <div class="tarjeta-bloque">
       <h3>Instalar en el móvil</h3>
-      <p><b>Android (Chrome):</b> menú ⋮ → <i>Instalar aplicación</i>.<br><b>iPhone (Safari):</b> compartir → <i>Añadir a pantalla de inicio</i>.</p>
+      ${instalable ? '<button class="btn peq" data-act="instalar">📲 Instalar Planteate</button>' : ''}
+      ${matchMedia('(display-mode: standalone)').matches ? '<p>✅ Estás usando la app instalada.</p>' : ''}
+      <p><b>Android (Chrome):</b> menú ⋮ → <i>Instalar aplicación</i>. Si dice que ya está instalada pero no la ves, busca "Planteate" en el cajón de apps o en Ajustes → Aplicaciones; si solo hay un acceso directo, bórralo y vuelve a instalar.<br><b>iPhone (Safari):</b> compartir → <i>Añadir a pantalla de inicio</i>.</p>
     </div>
     <p class="nota centro">Planteate ${VERSION}</p>`, 'ajustes', { titulo: 'Ajustes' });
 }
 
-/** Estado de los avisos diarios (se pide al servidor al abrir Ajustes). */
+/** Avisos de riego con notificaciones de la propia app. */
 function bloqueAvisos() {
-  const a = ui.avisos;
-  if (a === undefined) {
-    ui.avisos = null;
-    S.estadoAvisos().then((r) => { ui.avisos = r || false; pintar(); }).catch((e) => { ui.avisos = { error: e.message }; pintar(); });
-  }
-  if (!a) return '<p class="nota">Comprobando…</p>';
-  if (a.error) return `<p class="nota">No se pudo comprobar: ${h(a.error)}. ¿Has actualizado el Apps Script a la 5.1?</p>`;
-  const canales = a.canales.length ? a.canales.join(', ') : 'ninguno';
-  return `
-    <p>Canales: <b>${h(canales)}</b> · Aviso diario a las 9:00: <b>${a.programado ? 'activado ✅' : 'no activado'}</b></p>
-    ${a.ntfyTopic ? `<p class="nota">ntfy: instala la app <b>ntfy</b> y suscríbete al tema <code>${h(a.ntfyTopic)}</code>.</p>` : ''}
-    ${a.canales.length ? '<button class="btn peq claro" data-act="probar-aviso">📨 Enviar aviso de prueba</button>' : '<p class="nota">Configúralo en el Apps Script: mira el README, sección "Avisos al móvil".</p>'}
-    ${!a.programado && a.canales.length ? '<p class="nota">Para activarlo, ejecuta <code>activarAvisoDiario</code> en el editor de Apps Script.</p>' : ''}`;
+  const p = Av.permiso();
+  if (p === 'no') return '<p class="nota">Este navegador no permite notificaciones.</p>';
+  if (p === 'denied') return '<p class="nota">Las notificaciones están bloqueadas. Actívalas en Ajustes del móvil → Aplicaciones → Chrome (o Planteate) → Notificaciones.</p>';
+  if (p !== 'granted') return '<p>Te avisaremos cuando toque regar.</p><button class="btn peq" data-act="activar-avisos">🔔 Activar avisos</button>';
+  return `<p>Avisos <b>activados ✅</b>: una vez al día, a partir de las 9:00, si alguna planta necesita agua.</p>
+    <button class="btn peq claro" data-act="probar-aviso">📨 Probar aviso</button>
+    <p class="nota">Funcionan mejor con la app instalada. Si el móvil corta las apps en segundo plano (ColorOS lo hace), el aviso llegará al abrir Planteate.</p>`;
 }
 
 function vistaBienvenida() {
@@ -851,7 +849,7 @@ const acciones = {
   comparar: (el) => { ui.comparar = ui.comparar?.id === el.dataset.id ? null : { id: el.dataset.id }; pintar(); },
   cerrar: () => cerrarModal(),
   'subir-foto': async (el) => {
-    const file = await pedirFoto({ camara: false });
+    const file = await pedirFoto();
     if (!file) return;
     try {
       const f = await comprimirFoto(file);
@@ -865,9 +863,18 @@ const acciones = {
   },
   'probar-aviso': async (el) => {
     el.disabled = true;
-    try { const r = await S.probarAviso(); toast(`📨 Aviso enviado por ${r.enviados} canal(es). Mira el móvil.`); }
-    catch (e) { toast('No se pudo enviar: ' + e.message); }
+    try { await Av.probar(); } catch (e) { toast('No se pudo enviar: ' + e.message); }
     el.disabled = false;
+  },
+  'activar-avisos': async () => {
+    try { await Av.activar(); toast('🔔 Avisos activados'); Av.guardar(datos().plantas); } catch (e) { toast(e.message); }
+    pintar();
+  },
+  instalar: async () => {
+    if (!instalable) return;
+    instalable.prompt();
+    await instalable.userChoice;
+    instalable = null; pintar();
   },
   diagnosticar: async (el) => {
     const id = el.dataset.id;
@@ -893,7 +900,7 @@ const acciones = {
       const r = await S.identificar(f.base64, f.mime);
       ui.ultimosCandidatos = r.ok ? r.candidatos : [];
       ui.candidatos = r.ok
-        ? `<div class="candidatos">${r.candidatos.slice(0, 3).map((c, i) => `<button type="button" class="candidato" data-act="elegir-candidato" data-i="${i}"><b>${h(c.nombreCientifico)}</b><span>${h(c.nombreComunSugerido || '')} · ${Math.round((c.confianza || 0) * 100)}%</span></button>`).join('')}</div>`
+        ? `<div class="candidatos">${r.candidatos.slice(0, 3).map((c, i) => `<button type="button" class="candidato" data-act="elegir-candidato" data-i="${i}"><b>${h(c.nombreCientifico)}</b><span>${h(c.nombreComunSugerido || '')}${c.confianza == null ? '' : ` · ${Math.round(c.confianza * 100)}%`}</span></button>`).join('')}</div>`
         : `<p class="nota">${h(r.motivo)}</p>`;
     } catch (e) { ui.candidatos = `<p class="nota">No se pudo identificar: ${h(e.message)}</p>`; }
     pintar();
@@ -1045,6 +1052,7 @@ export function pintar() {
     : vistaHome();
 
   cargarFotos();
+  programarAvisos();
   if (!S.persona() && !document.querySelector('.modal-fondo')) modalQuien();
 }
 
@@ -1072,6 +1080,17 @@ A.cargarEspecies().catch((e) => console.warn('Catálogo:', e)).finally(() => {
   pintar();
   if (S.conf() && !S.esDemo()) S.sincronizar();
 });
+
+// Botón "Instalar" propio: Chrome avisa cuando la app se puede instalar.
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); instalable = e; if (location.hash.startsWith('#/ajustes')) pintar(); });
+
+// Avisos de riego: tras cada cambio, guardar las fechas para el service worker.
+let temporizadorAvisos = null;
+function programarAvisos() {
+  if (!S.conf() || S.esDemo() || Av.permiso() !== 'granted') return;
+  clearTimeout(temporizadorAvisos);
+  temporizadorAvisos = setTimeout(() => { try { Av.guardar(datos().plantas); } catch (e) { console.warn('Avisos:', e); } }, 2000);
+}
 
 if ('serviceWorker' in navigator) {
   // Al publicar una versión nueva, el SW nuevo toma el control: recargar una vez para usarla.
