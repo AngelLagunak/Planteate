@@ -366,8 +366,6 @@ export async function fichaEspecie(nombreCientifico) {
   return e;
 }
 
-export const estadoAvisos = () => (esDemo() ? Promise.resolve(null) : api('avisos'));
-export const probarAviso = () => api('probarAviso');
 
 /** Copia completa en JSON (para guardar a mano). */
 export function exportar() {

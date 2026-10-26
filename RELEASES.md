@@ -6,6 +6,21 @@ manual); este archivo es solo el histórico.
 
 ---
 
+## V5.2.0 — fotos, avisos propios e IA de reserva
+
+- **Fotos**: siempre se puede elegir entre hacer la foto o cogerla de la
+  galería (identificar, diagnosticar y subir).
+- **Avisos de riego con notificaciones de la app** (Ajustes → Avisos de
+  riego). Se quita ntfy; Telegram/WhatsApp quedan como opción del servidor.
+- **IA**: Gemini prueba Flash y Flash-Lite (más cupo gratis) y, si no hay
+  cupo, usa **Groq** (gratis, `GROQ_API_KEY`) como reserva.
+- **Identificar**: si Pl@ntNet duda (<50 %), Gemini mira la foto y da una
+  segunda opinión.
+- **Instalar**: `id` en el manifiesto y botón "Instalar Planteate" en Ajustes.
+- Datos de ejemplo y tests sin nombres reales.
+
+---
+
 ## V5.1.2 — revisión de seguridad
 
 - Enlaces `#/conectar`: solo URLs de Apps Script y confirmación si cambia
