@@ -1,10 +1,10 @@
-// PLANTEATE 5.0 — service worker: la app abre sin red.
+// PLANTEATE — service worker: la app abre sin red.
 // Sube VERSION en cada cambio para que los móviles cojan los archivos nuevos.
-const VERSION = 'pl5-v5';
+const VERSION = 'pl5-v6';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
   'js/app.js', 'js/store.js', 'js/cuidados.js', 'js/aprender.js', 'js/demo.js', 'js/idb.js', 'js/avisos.js',
-  'data/especies.json', 'icons/icon.svg', 'icons/icon-192.png'
+  'data/especies.json', 'icons/icon.svg', 'icons/icon-192.png', 'fonts/fraunces.woff2', 'fonts/work-sans.woff2'
 ];
 
 self.addEventListener('install', (e) => {
@@ -44,6 +44,9 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
+  // Lo que no sea de la propia app no se guarda: va directo a la red.
+  if (url.origin !== location.origin) return;
+
   // App y fuentes: caché al momento y actualiza por detrás.
   e.respondWith(caches.open(VERSION).then(async (c) => {
     const hit = await c.match(req, { ignoreSearch: url.origin === location.origin });
@@ -61,7 +64,7 @@ async function comprobarRiegos() {
   if (!r) return;
   const ahora = new Date();
   if (ahora.getHours() < 9) return; // no despertar a nadie
-  const hoy = ahora.toISOString().slice(0, 10);
+  const hoy = ahora.getFullYear() + '-' + (ahora.getMonth() + 1) + '-' + ahora.getDate(); // fecha local, no UTC
   const ultimo = await c.match('./avisos-ultimo');
   if (ultimo && (await ultimo.text()) === hoy) return; // ya avisado hoy
   const finDeHoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + 1).getTime();

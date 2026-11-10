@@ -1,5 +1,5 @@
 // ============================================================
-// PLANTEATE — Planteate.gs: backend completo de la PWA (V5.2.0)
+// PLANTEATE — Planteate.gs: backend completo de la PWA (V5.2.1)
 // ============================================================
 // UN solo archivo. Sustituye a TODOS los .gs y .html de la V4 (y al
 // Api.gs de la 5.0): bórralos del proyecto y deja solo este.
@@ -24,7 +24,7 @@
 // Funciones para ejecutar a mano desde el editor (desplegable → ▶):
 //   crearTokenApi · activarAvisoDiario · enviarAvisoDiario · hacerFotosPrivadas
 
-const VERSION_API = '5.2.0';
+const VERSION_API = '5.2.1';
 const HOJAS = { plantas: 'Plantas', acciones: 'Acciones', fotos: 'Fotos', personas: 'Personas', especies: 'Especies' };
 const ZONA = 'Europe/Madrid';
 
@@ -40,8 +40,8 @@ function doPost(e) {
   try { p = JSON.parse((e && e.postData && e.postData.contents) || '{}'); }
   catch (error) { return json_({ ok: false, error: 'JSON_INVALIDO' }); }
 
-  const token = prop_('API_TOKEN');
-  if (!token || p.k !== token) return json_({ ok: false, error: 'TOKEN' });
+  if (!p || typeof p !== 'object') return json_({ ok: false, error: 'JSON_INVALIDO' });
+  if (!tokenValido_(p.k)) return json_({ ok: false, error: 'TOKEN' });
 
   try {
     const a = p.args || {};
@@ -58,13 +58,22 @@ function doPost(e) {
       avisos: () => estadoAvisos_(),
       probarAviso: () => probarAviso_()
     };
-    if (!ops[p.op]) return json_({ ok: false, error: 'OP_DESCONOCIDA: ' + p.op });
+    if (!Object.prototype.hasOwnProperty.call(ops, p.op)) return json_({ ok: false, error: 'OP_DESCONOCIDA' });
     return json_({ ok: true, version: VERSION_API, data: ops[p.op]() });
   } catch (error) {
     const msg = String((error && error.message) || error).replace(/(key|token)=[^&\s]+/gi, '$1=***');
     console.warn('API ' + p.op + ': ' + msg);
     return json_({ ok: false, error: msg });
   }
+}
+
+/** Compara la clave sin cortar en el primer carácter distinto (no da pistas por tiempo). */
+function tokenValido_(k) {
+  const token = prop_('API_TOKEN');
+  if (!token || typeof k !== 'string' || k.length !== token.length) return false;
+  let dif = 0;
+  for (let i = 0; i < token.length; i++) dif |= token.charCodeAt(i) ^ k.charCodeAt(i);
+  return dif === 0;
 }
 
 function json_(o) {
@@ -331,6 +340,24 @@ function guardarPlanta_(ss, id, campos) {
 // Fotos (privadas: solo se ven a través de la API)
 // ---------------------------------------------------------------
 const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_FOTO_BYTES = 8 * 1024 * 1024;
+
+/** Valida una foto que llega de la app y devuelve { bytes, mime }. */
+function imagen_(base64, mime) {
+  mime = mime || 'image/jpeg';
+  if (TIPOS_FOTO.indexOf(mime) === -1) throw new Error('VALIDACION: formato de foto no permitido.');
+  if (typeof base64 !== 'string' || !base64) throw new Error('VALIDACION: falta la foto.');
+  if (base64.length > MAX_FOTO_BYTES * 4 / 3 + 4) throw new Error('VALIDACION: foto demasiado grande.');
+  let bytes;
+  try { bytes = Utilities.base64Decode(base64); } catch (e) { throw new Error('VALIDACION: foto no válida.'); }
+  return { bytes: bytes, mime: mime };
+}
+
+function fechaIso_(v) {
+  const d = v ? new Date(v) : new Date();
+  if (isNaN(d.getTime())) throw new Error('VALIDACION: fecha no válida.');
+  return d.toISOString();
+}
 
 function carpetaRaiz_() {
   const id = prop_('FOLDER_ID');
@@ -349,9 +376,8 @@ function carpetaPlanta_(plantaId) {
 function subirFoto_(a) {
   exigirId_(a.plantaId, 'plantaId');
   if (a.fotoId) exigirId_(a.fotoId, 'fotoId');
-  if (TIPOS_FOTO.indexOf(a.mime || 'image/jpeg') === -1) throw new Error('Formato de foto no permitido.');
-  const bytes = Utilities.base64Decode(a.base64);
-  if (bytes.length > 8 * 1024 * 1024) throw new Error('Foto demasiado grande.');
+  const img = imagen_(a.base64, a.mime);
+  const ts = fechaIso_(a.timestamp); // nunca texto libre: acabaría en una celda
   const l = bloqueo_();
   try {
     const ss = ss_();
@@ -361,8 +387,7 @@ function subirFoto_(a) {
     const ya = tabla_(h).filter((f) => f.fotoId === fotoId)[0];
     if (ya) return { fotoId: fotoId, plantaId: ya.plantaId, timestamp: ya.timestamp };
 
-    const archivo = carpetaPlanta_(a.plantaId).createFile(Utilities.newBlob(bytes, a.mime || 'image/jpeg', a.plantaId + '_' + Date.now() + '.jpg'));
-    const ts = a.timestamp || new Date().toISOString();
+    const archivo = carpetaPlanta_(a.plantaId).createFile(Utilities.newBlob(img.bytes, img.mime, a.plantaId + '_' + Date.now() + '.jpg'));
     const valores = { fotoId: fotoId, plantaId: a.plantaId, timestamp: ts, fileId: archivo.getId() };
     h.appendRow(cabeceras_(h).map((c) => valores[c] !== undefined ? valores[c] : ''));
     return { fotoId: fotoId, plantaId: a.plantaId, timestamp: ts };
@@ -382,13 +407,16 @@ function fileIdDe_(f) {
 
 /** Devuelve la foto en base64 (la app la guarda en el móvil y no la vuelve a pedir). */
 function leerFoto_(fotoId) {
+  exigirId_(fotoId, 'fotoId');
   const f = filaFoto_(fotoId);
-  if (!f) throw new Error('Foto no encontrada.');
-  const blob = DriveApp.getFileById(fileIdDe_(f)).getBlob();
+  const fileId = f && fileIdDe_(f);
+  if (!fileId) throw new Error('Foto no encontrada.');
+  const blob = DriveApp.getFileById(fileId).getBlob();
   return { fotoId: fotoId, mime: blob.getContentType(), base64: Utilities.base64Encode(blob.getBytes()) };
 }
 
 function eliminarFoto_(fotoId) {
+  exigirId_(fotoId, 'fotoId');
   const l = bloqueo_();
   try {
     const h = ss_().getSheetByName(HOJAS.fotos);
@@ -426,7 +454,8 @@ function hacerFotosPrivadas() {
 function plantnet_(ruta, base64, mime, extra) {
   const key = prop_('PLANTNET_API_KEY');
   if (!key) throw new Error('Falta PLANTNET_API_KEY en Script Properties.');
-  const blob = Utilities.newBlob(Utilities.base64Decode(base64), mime || 'image/jpeg', 'foto.jpg');
+  const img = imagen_(base64, mime);
+  const blob = Utilities.newBlob(img.bytes, img.mime, 'foto.jpg');
   const payload = Object.assign({ images: blob }, extra || {});
   const r = UrlFetchApp.fetch('https://my-api.plantnet.org/v2/' + ruta + '?lang=es&api-key=' + encodeURIComponent(key), { method: 'post', payload: payload, muteHttpExceptions: true });
   if (r.getResponseCode() === 404) return { results: [] };
@@ -469,8 +498,8 @@ function diagnosticar_(a) {
   try {
     const d = plantnet_('diseases/identify', a.base64, a.mime);
     const problemas = (d.results || []).filter((r) => r.score >= 0.15).slice(0, 3).map((r) => ({ nombre: r.description || r.name, probabilidad: r.score }));
-    const ctx = a.contexto || {};
-    const riego = ctx.riego || {};
+    const ctx = a.contexto && typeof a.contexto === 'object' ? a.contexto : {};
+    const riego = ctx.riego && typeof ctx.riego === 'object' ? ctx.riego : {};
     const lineas = [];
     if (riego.sinReferencia) lineas.push('⚠️ Sin fecha de referencia de riego: no se puede saber si el agua es la causa.');
     else if (riego.nivel === 'rojo' && !problemas.length) lineas.push('💧 El riego va ' + riego.diasDesde + ' días después del último (toca cada ' + Math.round(riego.freqDias) + ' aprox.) y la foto no muestra enfermedad. Lo más probable es sed: riega y mira si se recupera en 24–48 h.');
@@ -483,7 +512,7 @@ function diagnosticar_(a) {
     } else lineas.push('🔍 La foto no muestra plagas ni enfermedades conocidas.');
 
     const consejo = geminiOpcional_('Eres un experto en plantas de interior. Explica en español, cercano y práctico, en 3–5 frases, este diagnóstico ya calculado (no inventes hechos ni recomiendes productos químicos concretos). Planta: ' +
-      (ctx.nombrePlanta || '') + ' (' + (ctx.especie || 'especie desconocida') + ').\n' + lineas.join('\n'));
+      String(ctx.nombrePlanta || '').slice(0, 100) + ' (' + String(ctx.especie || 'especie desconocida').slice(0, 150) + ').\n' + lineas.join('\n'));
     if (consejo) lineas.push('', '🤖 ' + consejo);
 
     registrarEvento_(a.plantaId, 'diagnostico', problemas.length ? problemas.map((p) => p.nombre).join(', ') : 'sin signos de enfermedad');
@@ -575,7 +604,7 @@ function preguntar_(a) {
   exigirGemini_();
   const r = gemini_('Eres un experto en plantas de interior que ayuda a una familia en España a cuidar y aprender sobre sus plantas. ' +
     'Responde en español, claro y breve (máximo 6 frases), explicando el porqué. Si no estás seguro, dilo. No recomiendes productos químicos concretos.\n\n' +
-    'Contexto de la planta:\n' + JSON.stringify(a.contexto || {}) + '\n\nPregunta: ' + String(a.pregunta || '').slice(0, 500));
+    'Contexto de la planta:\n' + JSON.stringify(a.contexto || {}).slice(0, 4000) + '\n\nPregunta: ' + String(a.pregunta || '').slice(0, 500));
   if (!r) throw new Error('Gemini no respondió. Prueba en un rato.');
   return { respuesta: r };
 }
@@ -583,22 +612,34 @@ function preguntar_(a) {
 /** Crea la ficha de una especie que no está en el catálogo y la guarda en la hoja "Especies". */
 function fichaEspecie_(nombreCientifico) {
   exigirGemini_();
-  nombreCientifico = String(nombreCientifico || '').trim();
-  if (!nombreCientifico) throw new Error('Falta el nombre científico.');
+  // Solo letras, espacios y poco más: es un nombre, no un texto libre para la IA.
+  nombreCientifico = String(nombreCientifico || '').replace(/[^\p{L}\p{N} .×'()-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!nombreCientifico) throw new Error('VALIDACION: falta el nombre científico.');
   const ejemplo = '{"id":"slug-sin-tildes","cientifico":"","familia":"","genero":"","nombres":["nombre común en España"],"wiki":"título exacto del artículo en es.wikipedia","riego":{"cv":{"min":7,"max":10,"unidad":"dia"},"oi":{"min":14,"max":21,"unidad":"dia"},"cantidad":"","metodo":"","comoSaber":""},"nutrir":{"min":1,"max":1,"unidad":"mes","tipo":"","cuando":""},"trasplante":{"min":1,"max":2,"unidad":"año","nota":""},"luz":{"tipo":"","exposicion":"","horas":""},"sustrato":"","temperatura":"","toxica":true,"toxicidad":"","origen":"","porQue":"","errores":["",""],"pistas":["",""],"curiosidad":""}';
   const texto = gemini_('Crea la ficha de cuidados de interior de la especie "' + nombreCientifico + '" para una app doméstica en España. ' +
     'Devuelve SOLO JSON con exactamente esta forma (unidad: dia|semana|mes|año; cv = primavera-verano, oi = otoño-invierno; textos en español, frases cortas y sencillas; "porQue" explica su hábitat natural y por qué se cuida así; "comoSaber" cómo saber si necesita agua). Datos prudentes y realistas:\n' + ejemplo, true);
   if (!texto) throw new Error('Gemini no respondió. Prueba en un rato.');
-  const e = JSON.parse(texto.replace(/^```json|```$/g, ''));
-  e.id = String(e.id || nombreCientifico).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  let e;
+  try { e = JSON.parse(texto.replace(/^```json|```$/g, '')); } catch (error) { e = null; }
+  if (!e || typeof e !== 'object' || Array.isArray(e)) throw new Error('La IA devolvió una ficha que no se entiende. Prueba otra vez.');
+  // La IA puede saltarse la forma pedida: se asegura lo mínimo que la app necesita.
+  e.cientifico = String(e.cientifico || nombreCientifico).slice(0, 120);
+  e.genero = String(e.genero || e.cientifico.split(' ')[0]).slice(0, 60);
+  e.nombres = (Array.isArray(e.nombres) ? e.nombres : []).filter((n) => typeof n === 'string' && n.trim()).slice(0, 5);
+  if (!e.nombres.length) e.nombres = [e.cientifico];
+  e.id = String(e.id || nombreCientifico).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+  if (!e.id) throw new Error('La IA devolvió una ficha sin nombre. Prueba otra vez.');
   e.generadaConIA = true;
+  const json = JSON.stringify(e);
+  if (json.length > 20000) throw new Error('La IA devolvió una ficha demasiado larga. Prueba otra vez.');
   const l = bloqueo_();
   try {
     const h = hoja_(ss_(), HOJAS.especies, CABECERAS.Especies);
-    const filas = tabla_(h);
-    const i = filas.findIndex((f) => f.id === e.id);
-    if (i === -1) h.appendRow([e.id, JSON.stringify(e), new Date().toISOString()]);
-    else h.getRange(i + 2, 2).setValue(JSON.stringify(e));
+    // Se busca en la columna de ids (no en tabla_, que se salta las filas vacías y descuadra el número de fila).
+    const ids = h.getLastRow() > 1 ? h.getRange(2, 1, h.getLastRow() - 1, 1).getValues().map((r) => String(r[0])) : [];
+    const i = ids.indexOf(e.id);
+    if (i === -1) h.appendRow([e.id, json, new Date().toISOString()]);
+    else h.getRange(i + 2, 2).setValue(json);
   } finally { l.releaseLock(); }
   return e;
 }
@@ -638,13 +679,17 @@ function enviarAvisoDiario() {
 
 function enviar_(titulo, texto, url) {
   let n = 0;
-  const intentar = (nombre, fn) => { try { fn(); n++; } catch (e) { console.warn('Aviso ' + nombre + ': ' + e); } };
+  // muteHttpExceptions + solo el código: el mensaje de error de UrlFetchApp incluye la URL (con el token).
+  const intentar = (nombre, fn) => {
+    try { const c = fn().getResponseCode(); if (c >= 300) throw new Error('HTTP ' + c); n++; }
+    catch (e) { console.warn('Aviso ' + nombre + ': ' + String((e && e.message) || e).replace(/https?:\/\/\S+/g, '[url]')); }
+  };
   const tg = prop_('TELEGRAM_BOT_TOKEN'), chat = prop_('TELEGRAM_CHAT_ID');
   if (tg && chat) intentar('Telegram', () => UrlFetchApp.fetch('https://api.telegram.org/bot' + tg + '/sendMessage', {
-    method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chat, text: titulo + '\n\n' + texto })
+    method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chat, text: titulo + '\n\n' + texto }), muteHttpExceptions: true
   }));
   const tel = prop_('CALLMEBOT_PHONE'), cmb = prop_('CALLMEBOT_APIKEY');
-  if (tel && cmb) intentar('WhatsApp', () => UrlFetchApp.fetch('https://api.callmebot.com/whatsapp.php?phone=' + encodeURIComponent(tel) + '&apikey=' + encodeURIComponent(cmb) + '&text=' + encodeURIComponent(titulo + '\n' + texto)));
+  if (tel && cmb) intentar('WhatsApp', () => UrlFetchApp.fetch('https://api.callmebot.com/whatsapp.php?phone=' + encodeURIComponent(tel) + '&apikey=' + encodeURIComponent(cmb) + '&text=' + encodeURIComponent(titulo + '\n' + texto), { muteHttpExceptions: true }));
   return n;
 }
 

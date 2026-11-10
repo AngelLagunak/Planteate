@@ -30,3 +30,4 @@ export const leer = (almacen, clave) => tx(almacen, 'readonly', (s) => s.get(cla
 export const guardar = (almacen, clave, valor) => tx(almacen, 'readwrite', (s) => s.put(valor, clave));
 export const borrar = (almacen, clave) => tx(almacen, 'readwrite', (s) => s.delete(clave));
 export const todos = (almacen) => tx(almacen, 'readonly', (s) => s.getAll());
+export const vaciar = (almacen) => tx(almacen, 'readwrite', (s) => s.clear());

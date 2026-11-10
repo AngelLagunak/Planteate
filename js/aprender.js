@@ -18,7 +18,10 @@ export async function cargarEspecies() {
 /** Fichas creadas con IA (hoja "Especies"). El catálogo fijo manda si hay choque de id. */
 export function registrarExtras(extras = []) {
   const ids = new Set(base.map((e) => e.id));
-  especies = base.concat(extras.filter((e) => e?.id && !ids.has(e.id)));
+  // Las fichas de IA pueden venir incompletas: se asegura lo mínimo para que la app no falle al pintarlas.
+  const validas = extras.filter((e) => e && typeof e === 'object' && typeof e.id === 'string' && e.id && typeof e.cientifico === 'string' && e.cientifico && !ids.has(e.id))
+    .map((e) => ({ ...e, nombres: Array.isArray(e.nombres) && e.nombres.some((n) => typeof n === 'string' && n) ? e.nombres.filter((n) => typeof n === 'string' && n) : [e.cientifico], sinonimos: Array.isArray(e.sinonimos) ? e.sinonimos.filter((x) => typeof x === 'string') : [] }));
+  especies = base.concat(validas);
 }
 export const listaEspecies = () => especies;
 export const especiePorId = (id) => especies.find((e) => e.id === id) || null;

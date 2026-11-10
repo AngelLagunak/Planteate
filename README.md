@@ -119,13 +119,16 @@ hoja `Especies` (fichas creadas con IA). Nuevos `tipoAccion`: `nutrir`,
 - **Token de acceso** (`API_TOKEN`, 128 bits): sin él la API no responde
   datos. Va en el enlace de conexión (detrás de `#`, que el navegador no
   envía a GitHub) y se guarda en el móvil.
-- **Enlaces de conexión**: solo se aceptan URLs de Apps Script, y si la app
-  ya está conectada pide confirmación antes de cambiar de hoja.
-- **CSP** en `index.html`: solo se ejecutan scripts propios y solo se
-  envían datos a Apps Script y Wikipedia.
+- **Enlaces de conexión**: solo se aceptan URLs de Apps Script y siempre
+  se pide confirmación antes de conectar o cambiar de hoja.
+- **CSP** en `index.html`: todo bloqueado por defecto; solo se ejecutan
+  scripts propios y solo se envían datos a Apps Script y Wikipedia.
+- **Sin terceros**: fuentes e iconos van dentro de la app (sin Google
+  Fonts, sin analítica, sin cookies). La app no se deja incrustar en otra web.
 - **Escapado** de todo lo que se pinta (nombres, notas, ids, respuestas de
   la IA).
-- **Backend**: valida ids, tipos de acción, nombres de columna y tamaños;
+- **Backend**: valida ids, tipos de acción, nombres de columna, fechas,
+  fotos (tipo y tamaño) y tamaños;
   los textos que empiezan por `=` se guardan como texto, no como fórmula.
 - **Fotos privadas** en Drive; solo la API (con token) puede leerlas.
 - **Sin secretos en el repositorio**: todas las claves viven en las

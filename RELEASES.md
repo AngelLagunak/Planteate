@@ -6,6 +6,32 @@ manual); este archivo es solo el histórico.
 
 ---
 
+## V5.2.1 — auditoría de seguridad y calidad
+
+**Fallos corregidos**
+- Los cambios hechos en **modo prueba** ya no se envían a la hoja real al
+  conectar (la cola, las fotos y los avisos se vacían al cambiar de hoja).
+- **Deshacer** justo mientras se guardaba no anulaba la acción en la hoja;
+  y podía descartar otro cambio distinto de la cola. Corregido.
+- Una ficha de IA incompleta podía dejar la app en blanco.
+- Al editar una planta se perdía un "Origen" que no estuviera en la lista.
+- Una foto rechazada por el servidor bloqueaba la subida de las demás.
+
+**Seguridad**
+- Servidor: la fecha de las fotos se valida (antes podía colarse una
+  fórmula en la hoja); fotos validadas (tipo y tamaño) también al
+  identificar y diagnosticar; ids de foto validados; nombre científico y
+  contexto acotados antes de ir a la IA; comparación de la clave en tiempo
+  constante; los tokens de Telegram/CallMeBot ya no pueden acabar en los
+  registros de error.
+- App: los enlaces de conexión piden confirmación **siempre**; la app no
+  se pinta si otra web la incrusta (clickjacking); CSP más estricta
+  (`default-src 'none'`).
+- **Privacidad**: las fuentes se sirven desde la propia app; ya no hay
+  ninguna petición a Google Fonts ni a ningún tercero al abrirla.
+
+---
+
 ## V5.2.0 — fotos, avisos propios e IA de reserva
 
 - **Fotos**: siempre se puede elegir entre hacer la foto o cogerla de la

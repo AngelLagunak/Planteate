@@ -1,5 +1,5 @@
 // ============================================================
-// PLANTEATE 5.0 — store.js: datos locales + cola offline + sync
+// PLANTEATE — store.js: datos locales + cola offline + sync
 // ============================================================
 // Local primero: todo se lee de la copia guardada en el móvil
 // (localStorage, pocos KB). Cada cambio:
@@ -38,17 +38,25 @@ export const conf = () => estado.conf;
 export const esDemo = () => !!estado.conf?.demo;
 
 export function configurar(nueva) {
+  const anterior = estado.conf;
   estado.conf = nueva;
   guardar(K.conf, nueva);
-  if (nueva?.demo) {
-    estado.snap = structuredClone(DEMO);
+  // Al cambiar de hoja (o entrar/salir del modo prueba) no puede quedar nada
+  // de la anterior: ni cambios en cola, ni fotos, ni avisos. Si solo cambia la
+  // clave de la misma hoja, la cola se conserva.
+  if (nueva?.demo || anterior?.demo || anterior?.api !== nueva?.api) {
     estado.cola = [];
-    guardar(K.snap, estado.snap);
     guardar(K.cola, []);
-  } else {
-    estado.snap = null;
-    guardar(K.snap, null);
+    fotosPendientes.length = 0;
+    urlsFoto.forEach((u) => URL.revokeObjectURL(u));
+    urlsFoto.clear();
+    idb.vaciar('pendientes').catch(() => {});
+    idb.vaciar('fotos').catch(() => {});
+    globalThis.caches?.delete('pl5-avisos').catch(() => {});
   }
+  estado.snap = nueva?.demo ? structuredClone(DEMO) : null;
+  guardar(K.snap, estado.snap);
+  cacheVista = null;
   avisar();
 }
 
@@ -127,7 +135,8 @@ export function registrarAccion(plantaIds, tipoAccion, detalle = '') {
 
 /** Deshacer: si aún no se envió, se quita de la cola; si ya está en la hoja, se borra allí. */
 export function deshacer(logIds) {
-  const enCola = new Set(estado.cola.filter((op) => op.t === 'accion').map((op) => op.logId));
+  // Lo que está viajando ahora mismo al servidor cuenta como enviado: hay que anularlo allí.
+  const enCola = new Set(estado.cola.filter((op) => op.t === 'accion' && !enVuelo.has(op)).map((op) => op.logId));
   const yaEnviadas = logIds.filter((id) => !enCola.has(id));
   estado.cola = estado.cola.filter((op) => !(op.t === 'accion' && logIds.includes(op.logId)));
   guardar(K.cola, estado.cola);
@@ -183,6 +192,7 @@ export async function api(op, args = {}, timeoutMs = 30000) {
 
 let temporizador = null;
 let enCurso = null;
+let enVuelo = new Set(); // operaciones del lote que se está enviando
 function programarEnvio(ms = 400) {
   clearTimeout(temporizador);
   temporizador = setTimeout(() => sincronizar(), ms);
@@ -195,34 +205,40 @@ export function sincronizar() {
   if (!navigator.onLine) { estado.sync = 'offline'; avisar(); return Promise.resolve(); }
 
   const enviadas = estado.cola.slice();
+  const confEnvio = estado.conf;
+  enVuelo = new Set(enviadas);
+  // La cola puede cambiar durante el envío (Deshacer): se quitan estas operaciones, no "las N primeras".
+  const quitarEnviadas = () => { estado.cola = estado.cola.filter((op) => !enVuelo.has(op)); guardar(K.cola, estado.cola); };
   estado.sync = 'enviando';
   avisar();
 
   enCurso = api('lote', { ops: enviadas }, 45000)
     .then((data) => {
+      if (estado.conf !== confEnvio) return; // se cambió de hoja durante el envío: esta respuesta ya no vale
       estado.snap = data;
-      estado.cola = estado.cola.slice(enviadas.length);
+      quitarEnviadas();
       estado.ultimaSync = new Date().toISOString();
       estado.sync = 'ok';
       estado.error = null;
       guardar(K.snap, data);
-      guardar(K.cola, estado.cola);
       guardar(K.sync, estado.ultimaSync);
     })
     .catch((e) => {
+      if (estado.conf !== confEnvio) return;
       estado.sync = navigator.onLine ? 'error' : 'offline';
       estado.error = e.message;
       console.warn('Sync:', e);
       if (/VALIDACION/.test(e.message) && enviadas.length) {
         // Un dato inválido bloquearía la cola para siempre: se descarta ese lote.
-        estado.cola = estado.cola.slice(enviadas.length);
-        guardar(K.cola, estado.cola);
+        quitarEnviadas();
       } else {
         programarEnvio(estado.cola.length ? 30000 : 20000); // reintento automático
       }
     })
     .finally(() => {
       enCurso = null;
+      enVuelo = new Set();
+      if (estado.conf !== confEnvio) { estado.sync = 'ok'; programarEnvio(100); }
       cacheVista = null;
       avisar();
       if (estado.sync === 'ok' && estado.cola.length) programarEnvio(100);
@@ -301,13 +317,20 @@ async function subirPendientes() {
   if (subiendo || esDemo() || !estado.conf?.api || !navigator.onLine) return;
   subiendo = true;
   try {
+    if (!estado.snap) return; // aún sin primera sincronización
     for (const p of await idb.todos('pendientes')) {
-      const r = await api('subirFoto', p, 90000);
-      await idb.guardar('fotos', p.fotoId, aBlob(p.base64, p.mime));
+      let r = null;
+      try { r = await api('subirFoto', p, 90000); }
+      catch (e) {
+        // Una foto que el servidor rechaza no debe atascar a las demás; un fallo de red sí corta (se reintenta luego).
+        if (!/VALIDACION/.test(e.message)) throw e;
+        console.warn('Foto rechazada:', e.message);
+      }
+      if (r) await idb.guardar('fotos', p.fotoId, aBlob(p.base64, p.mime));
       await idb.borrar('pendientes', p.fotoId);
       const i = fotosPendientes.findIndex((f) => f.fotoId === p.fotoId);
       if (i !== -1) fotosPendientes.splice(i, 1);
-      if (!estado.snap.fotos.some((f) => f.fotoId === r.fotoId)) estado.snap.fotos.push(r);
+      if (r && estado.snap && !estado.snap.fotos.some((f) => f.fotoId === r.fotoId)) estado.snap.fotos.push(r);
       guardar(K.snap, estado.snap);
       cacheVista = null; avisar();
     }
