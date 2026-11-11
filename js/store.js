@@ -64,7 +64,9 @@ export const persona = () => estado.persona;
 export function elegirPersona(nombre) {
   nombre = String(nombre || '').trim();
   if (!nombre) return;
-  const existente = (vista().personas || []).find((p) => p.toLowerCase() === nombre.toLowerCase());
+  // "Angel" y "Ángel" son la misma persona.
+  const llano = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const existente = (vista().personas || []).find((p) => llano(p) === llano(nombre));
   estado.persona = existente || nombre;
   guardar(K.persona, estado.persona);
   if (!existente) encolar({ t: 'persona', nombre: estado.persona });

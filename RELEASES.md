@@ -16,6 +16,7 @@ manual); este archivo es solo el histórico.
 - Una ficha de IA incompleta podía dejar la app en blanco.
 - Al editar una planta se perdía un "Origen" que no estuviera en la lista.
 - Una foto rechazada por el servidor bloqueaba la subida de las demás.
+- "Angel" y "Ángel" ya cuentan como la misma persona (no se crean duplicados).
 
 **Seguridad**
 - Servidor: la fecha de las fotos se valida (antes podía colarse una
@@ -27,6 +28,7 @@ manual); este archivo es solo el histórico.
 - App: los enlaces de conexión piden confirmación **siempre**; la app no
   se pinta si otra web la incrusta (clickjacking); CSP más estricta
   (`default-src 'none'`).
+- Licencia MIT (`LICENSE`) y `SECURITY.md`.
 - **Privacidad**: las fuentes se sirven desde la propia app; ya no hay
   ninguna petición a Google Fonts ni a ningún tercero al abrirla.
 

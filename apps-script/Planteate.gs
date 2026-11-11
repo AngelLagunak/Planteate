@@ -186,7 +186,9 @@ function todo_() {
   const personas = {};
   tabla_(ss.getSheetByName(HOJAS.personas)).forEach((f) => {
     const n = String(f.nombre || '').trim();
-    if (n && !personas[n.toLowerCase()]) personas[n.toLowerCase()] = n;
+    // "Angel" y "Ángel" son la misma persona: se queda la forma con tilde.
+    const k = sinTildes_(n);
+    if (n && (!personas[k] || (sinTildes_(personas[k], true) === personas[k] && sinTildes_(n, true) !== n))) personas[k] = n;
   });
   return {
     plantas: tabla_(ss.getSheetByName(HOJAS.plantas)),
@@ -197,6 +199,12 @@ function todo_() {
     inicioGlobal: prop_('INICIO_FRECUENCIAS_GLOBAL') || null,
     servidor: new Date().toISOString()
   };
+}
+
+/** Para comparar nombres: sin tildes y (salvo conservarCaja) en minúsculas. */
+function sinTildes_(t, conservarCaja) {
+  t = String(t || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return conservarCaja ? t : t.toLowerCase();
 }
 
 function especiesExtra_(ss) {
@@ -266,7 +274,7 @@ function registrarPersona_(ss, nombre) {
   if (!nombre) return;
   nombre = celda_(nombre);
   const h = hoja_(ss, HOJAS.personas, CABECERAS.Personas);
-  const ya = tabla_(h).some((f) => String(f.nombre || '').trim().toLowerCase() === nombre.toLowerCase());
+  const ya = tabla_(h).some((f) => sinTildes_(f.nombre) === sinTildes_(nombre));
   if (!ya) h.appendRow([nombre, new Date().toISOString()]);
 }
 
