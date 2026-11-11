@@ -1,3 +1,6 @@
+/* Fuentes servidas desde la propia app (licencia SIL OFL): ninguna visita se envía a terceros. */
+@font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 500 600; font-display: swap; src: url(../fonts/fraunces.woff2) format('woff2'); }
+@font-face { font-family: 'Work Sans'; font-style: normal; font-weight: 400 600; font-display: swap; src: url(../fonts/work-sans.woff2) format('woff2'); }
 /* PLANTEATE 5.0 — estilos */
 :root {
   --bg: #F1EEE2; --card: #FBFAF5; --ink: #232C1E; --ink-soft: #5C6350; --ink-faint: #93998A;

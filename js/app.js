@@ -1,5 +1,5 @@
 // ============================================================
-// PLANTEATE 5.0 — app.js: pantallas y navegación
+// PLANTEATE — app.js: pantallas y navegación
 // ============================================================
 // Navegación por hash (#/p/<id>, #/aprender…): el botón "atrás" del
 // móvil funciona solo. Todas las acciones van por data-act="…" con un
@@ -10,8 +10,11 @@ import * as C from './cuidados.js';
 import * as A from './aprender.js';
 import * as Av from './avisos.js';
 
-export const VERSION = '5.2.0';
+export const VERSION = '5.2.1';
 const app = document.getElementById('app');
+// GitHub Pages no deja enviar la cabecera que prohíbe incrustar la app en otra web
+// (para engañar con clics): si no somos la ventana principal, no se pinta nada.
+const INCRUSTADA = window.top !== window.self;
 const ui = { filtro: null, seleccion: null, tab: 'cuidar', grafico: 'riego', wikiCargando: {}, agrupar: localStorage.getItem('pl5_agrupar') === '1', comparar: null };
 
 // ---------------------------------------------------------------
@@ -529,7 +532,7 @@ function vistaEditar(id) {
       ${texto('Ubicación', 'Ubicación', 'Salón, ventana norte…')}
       <div class="dos">
         <label>Cumpleaños<input type="date" name="Cumpleaños" value="${cumple && !isNaN(cumple) ? cumple.toISOString().slice(0, 10) : ''}"></label>
-        <label>Origen<select name="Origen">${ORIGENES.map((o) => `<option ${o === (p.Origen || '') ? 'selected' : ''}>${o}</option>`).join('')}</select></label>
+        <label>Origen<select name="Origen">${[...new Set([...ORIGENES, String(p.Origen || '')])].map((o) => `<option ${o === String(p.Origen || '') ? 'selected' : ''}>${h(o)}</option>`).join('')}</select></label>
       </div>
       <h3>Frecuencias</h3>
       <p class="nota">Si solo sabes un número, ponlo en mín y máx.</p>
@@ -731,6 +734,7 @@ function modalObservar(id) {
 function contextoPlanta(id) {
   const { v, plantas } = datos();
   const p = plantas.find((x) => x.id === id);
+  if (!p) return {};
   const e = p.especie;
   const r = p.estado.riego;
   const obs = v.acciones.filter((a) => a.plantaId === id && ['observacion', 'diagnostico'].includes(a.tipoAccion))
@@ -788,6 +792,7 @@ const acciones = {
     const { plantas } = datos();
     const p = plantas.find((x) => x.id === el.dataset.id);
     const tipo = el.dataset.tipo;
+    if (!p || !C.TIPOS.includes(tipo)) return;
     const logIds = S.registrarAccion(p.id, tipo);
     if (tipo === 'riego' && p.RiegoPospuestoHasta) S.guardarPlanta(p.id, { RiegoPospuestoHasta: '' });
     toast(`${C.EMOJI[tipo]} ${p.nombre}: ${C.ETIQUETA[tipo].toLowerCase()} anotado`, { pista: A.pistaTras(tipo, p.especie), deshacer: logIds });
@@ -921,6 +926,7 @@ const acciones = {
     a.href = URL.createObjectURL(blob);
     a.download = `planteate-copia-${hoyIso()}.json`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   },
   compartir: async () => {
     const c = S.conf();
@@ -1007,6 +1013,7 @@ function ruta() {
 
 let ultimaRuta = null;
 export function pintar() {
+  if (INCRUSTADA) { app.textContent = 'Abre Planteate en su propia pestaña.'; return; }
   const { partes, query } = ruta();
 
   if (partes[0] === 'conectar' && query.get('api') && query.get('k')) {
@@ -1019,7 +1026,9 @@ export function pintar() {
       toast('⚠️ Enlace no válido: no apunta a un Apps Script. No se ha cambiado nada.');
     } else if (actual?.api === nueva.api && actual?.k === nueva.k) {
       // Mismo enlace: nada que hacer.
-    } else if (!actual?.api || actual.demo || confirm('Este enlace cambia la hoja a la que está conectada la app. ¿Seguro? Ábrelo solo si te lo ha mandado alguien de casa.')) {
+    } else if (confirm(actual?.api && !actual.demo
+      ? 'Este enlace cambia la hoja a la que está conectada la app. ¿Seguro? Ábrelo solo si te lo ha mandado alguien de casa.'
+      : 'Este enlace conecta la app con la hoja de plantas de otra persona. Acéptalo solo si te lo ha mandado alguien de casa.')) {
       S.configurar(nueva);
       S.sincronizar();
     }
@@ -1078,7 +1087,7 @@ window.addEventListener('hashchange', () => { cerrarModal(); pintar(); });
 // ---------------------------------------------------------------
 A.cargarEspecies().catch((e) => console.warn('Catálogo:', e)).finally(() => {
   pintar();
-  if (S.conf() && !S.esDemo()) S.sincronizar();
+  if (!INCRUSTADA && S.conf() && !S.esDemo()) S.sincronizar();
 });
 
 // Botón "Instalar" propio: Chrome avisa cuando la app se puede instalar.
